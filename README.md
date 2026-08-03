@@ -73,6 +73,24 @@ Uninstalling removes the launchers only — your cached token files are left unt
 - Nothing is committed or transmitted anywhere except the backend you call.
 - Rotate a key any time with `cckimi-token` / `ccglm-token` (or pass it as the first argument).
 
+## 🎛️ Models per tier
+
+Each launcher maps Claude Code's model tiers to a fitting backend model — the heavy tiers
+and the subagents get the flagship, while the lighter/background tiers get a cheaper model:
+
+| Claude tier | `cckimi` (Kimi) | `ccglm` (Z.AI GLM) |
+|-------------|-----------------|--------------------|
+| main / Opus | `kimi-k3` (1M ctx) | `glm-5.2` (1M ctx) |
+| Sonnet | `kimi-k2.7-code` | `glm-4.6` |
+| Haiku *(background: summaries, titles)* | `kimi-k2.7-code` | `glm-4.5-air` |
+| Fable *(fast tier)* | `kimi-k2.7-code-highspeed` | `glm-4.7-flashx` |
+| subagents | `kimi-k3` (1M ctx) | `glm-5.2` (1M ctx) |
+
+To use a different model for a tier, edit the matching `ANTHROPIC_DEFAULT_*_MODEL` (or
+`CLAUDE_CODE_SUBAGENT_MODEL`) line in the launcher block written to your rc file — model IDs come
+from [Kimi](https://platform.kimi.ai/docs/models) / [Z.AI](https://docs.z.ai). Availability depends
+on your plan; if a model is rejected, swap it for one your subscription includes.
+
 ## 🧠 How it works
 
 - **Linux/macOS:** the installer writes a single, marker-delimited block
