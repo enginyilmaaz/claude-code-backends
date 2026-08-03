@@ -149,7 +149,8 @@ Write-Host "OK  claude-code-backends installed -> $aliasDir (added to PATH)" -Fo
 Write-Host ""
 Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)"
 Write-Host ""
-Write-Host "Open a NEW terminal to use them."
+Write-Host "Ready in THIS PowerShell session now (the alias folder was added to the current PATH)." -ForegroundColor Green
+Write-Host "Open a new window only for cmd.exe / other shells to pick up the persisted PATH."
 Write-Host "First run of cckimi/ccglm asks for the backend API key and caches it in"
 Write-Host "%USERPROFILE%\.kimi_token / .zai_token; update later with cckimi-token / ccglm-token."
 Write-Host "Requires Claude Code installed."

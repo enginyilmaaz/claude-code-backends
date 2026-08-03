@@ -6,17 +6,22 @@
 #   cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
 #   ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
 #
-# Quick install:
+# Install AND load into your current shell (recommended — commands work right away):
+#   source <(curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh)
+# Plain install (open a new terminal, or `source ~/.bashrc`, to pick them up):
 #   curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh | bash
 # Uninstall:
 #   curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh | bash -s -- --uninstall
-set -euo pipefail
-
-g(){ printf '\033[32m%s\033[0m' "$1"; }
-b(){ printf '\033[1m%s\033[0m' "$1"; }
+#
+# Safe to run either way. When EXECUTED (curl|bash, ./install.sh) it just writes the rc
+# block. When SOURCED from an interactive shell (source <(curl …)) it ALSO loads the
+# launchers into the running shell, so cckimi / ccglm work in the current terminal without
+# opening a new one — a child process (curl|bash) can never inject into the parent shell,
+# so sourcing is the only way to reach the terminal you are typing in.
 
 # The backend launchers, delimited by markers so they can be replaced idempotently.
-BLOCK=$(cat <<'CC_BACKENDS_EOF'
+# Kept in a variable so a sourced install can eval it straight into the current shell.
+CC_BACKENDS_BLOCK=$(cat <<'CC_BACKENDS_EOF'
 # BEGIN cc-backends
 # cckimi -> runs Claude Code on the Kimi backend (token lives in ~/.kimi_token, chmod 600)
 cckimi() {
@@ -105,41 +110,77 @@ __cc_set_token() {
 CC_BACKENDS_EOF
 )
 
-strip_block() {  # remove any existing block from $1
-  [ -f "$1" ] || return 0
-  sed -i '/^# BEGIN cc-backends$/,/^# END cc-backends$/d' "$1"
-}
+# All file-mutating work runs in a SUBSHELL so `set -e` / `exit` can never leak into a
+# shell that SOURCED this script (either would kill the user's terminal on error).
+# Exit status back to the caller: 0 installed · 10 uninstalled · 11 help · anything else = error.
+__cc_backends_run() (
+  set -euo pipefail
+  g(){ printf '\033[32m%s\033[0m' "$1"; }
+  b(){ printf '\033[1m%s\033[0m' "$1"; }
 
-# Pick target rc files: those that exist; if none, create ~/.bashrc.
-targets=()
-[ -f "$HOME/.bashrc" ] && targets+=("$HOME/.bashrc")
-[ -f "$HOME/.zshrc" ]  && targets+=("$HOME/.zshrc")
-if [ "${#targets[@]}" -eq 0 ]; then touch "$HOME/.bashrc"; targets+=("$HOME/.bashrc"); fi
+  strip_block() {  # remove any existing block from $1
+    [ -f "$1" ] || return 0
+    sed -i '/^# BEGIN cc-backends$/,/^# END cc-backends$/d' "$1"
+  }
 
-case "${1:-}" in
-  --uninstall)
-    for rc in "${targets[@]}"; do strip_block "$rc"; done
-    echo "$(g '✓') cckimi / ccglm removed from: ${targets[*]}"
-    echo "note: token files ~/.kimi_token and ~/.zai_token were left untouched."
-    exit 0 ;;
-  -h|--help)
-    echo "usage: install.sh [--uninstall]"; exit 0 ;;
+  # Pick target rc files: those that exist; if none, create ~/.bashrc.
+  targets=()
+  [ -f "$HOME/.bashrc" ] && targets+=("$HOME/.bashrc")
+  [ -f "$HOME/.zshrc" ]  && targets+=("$HOME/.zshrc")
+  if [ "${#targets[@]}" -eq 0 ]; then touch "$HOME/.bashrc"; targets+=("$HOME/.bashrc"); fi
+
+  case "${1:-}" in
+    --uninstall)
+      for rc in "${targets[@]}"; do strip_block "$rc"; done
+      echo "$(g '✓') cckimi / ccglm removed from: ${targets[*]}"
+      echo "note: token files ~/.kimi_token and ~/.zai_token were left untouched."
+      exit 10 ;;
+    -h|--help)
+      echo "usage: install.sh [--uninstall]"; exit 11 ;;
+  esac
+
+  for rc in "${targets[@]}"; do
+    strip_block "$rc"                    # idempotent: drop any previous block first
+    printf '\n%s\n' "$CC_BACKENDS_BLOCK" >> "$rc"
+  done
+
+  echo
+  echo "$(g '✓') claude-code-backends installed → ${targets[*]}"
+  echo
+  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)"
+  echo
+  echo "first run of $(b cckimi)/$(b ccglm) asks for the backend API key and caches it in"
+  echo "~/.kimi_token / ~/.zai_token (chmod 600); update later with cckimi-token / ccglm-token."
+  echo
+  echo "requires Claude Code installed."
+  exit 0
+)
+
+__cc_backends_run "$@"
+__cc_rc=$?
+
+# Interactive shell? True only when this script was SOURCED at a prompt — the one situation
+# where we can load the launchers straight into the shell you are typing in.
+__cc_interactive=0
+case "$-" in *i*) __cc_interactive=1 ;; esac
+
+if [ "$__cc_rc" -eq 0 ]; then
+  if [ "$__cc_interactive" -eq 1 ]; then
+    eval "$CC_BACKENDS_BLOCK"            # load into the CURRENT shell — ready immediately
+    printf '\n\033[32m✓\033[0m loaded into this shell — \033[1mcckimi\033[0m / \033[1mccglm\033[0m are ready to use now.\n\n'
+  else
+    printf '\nreload your shell to use them now:\n'
+    printf '  source ~/.bashrc            # or ~/.zshrc, or just open a new terminal\n'
+    printf 'tip: install with  \033[1msource <(curl -fsSL …/install.sh)\033[0m  to load them into the current shell in one step.\n\n'
+  fi
+elif [ "$__cc_rc" -eq 10 ] && [ "$__cc_interactive" -eq 1 ]; then
+  unset -f cckimi ccglm cckimi-token ccglm-token __cc_set_token 2>/dev/null || true
+  printf '\033[32m✓\033[0m also removed from this shell.\n'
+fi
+
+# Reflect the outcome as $? WITHOUT ever calling exit/return (either would kill a sourced
+# shell): 0/10/11 are success, anything else is a real error to propagate to curl|bash callers.
+case "$__cc_rc" in
+  0|10|11) ( exit 0 ) ;;
+  *)       ( exit "$__cc_rc" ) ;;
 esac
-
-for rc in "${targets[@]}"; do
-  strip_block "$rc"                    # idempotent: drop any previous block first
-  printf '\n%s\n' "$BLOCK" >> "$rc"
-done
-
-echo
-echo "$(g '✓') claude-code-backends installed → ${targets[*]}"
-echo
-echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)"
-echo
-echo "reload your shell to use them:"
-echo "  source ${targets[0]}    # or just open a new terminal"
-echo
-echo "first run of $(b cckimi)/$(b ccglm) asks for the backend API key and caches it in"
-echo "~/.kimi_token / ~/.zai_token (chmod 600); update later with cckimi-token / ccglm-token."
-echo
-echo "requires Claude Code installed."

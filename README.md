@@ -20,7 +20,14 @@ your normal `claude` login is untouched, and the backend env never leaks into yo
 
 ## 🚀 Quick install
 
-**Linux / macOS** (bash/zsh — writes the launchers into `~/.bashrc` and `~/.zshrc` if present):
+**Linux / macOS** (bash/zsh — writes the launchers into `~/.bashrc` and `~/.zshrc` if present).
+Use the `source <(…)` form so the commands also load into your **current** shell right away:
+
+```bash
+source <(curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh)
+```
+
+Or the plain pipe (installs to your rc files; open a new terminal or `source ~/.bashrc` to use them):
 
 ```bash
 curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh | bash
@@ -33,7 +40,9 @@ so they work from cmd, PowerShell and Run):
 irm https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.ps1 | iex
 ```
 
-Then open a new terminal (or `source ~/.bashrc`) and the commands are ready.
+With the `source <(…)` form (Linux/macOS) the commands work in the current shell immediately.
+The plain pipe writes to your rc files instead — open a new terminal or `source ~/.bashrc` to pick them up.
+On Windows they are ready in the **current PowerShell** session at once (a new window is only needed for `cmd.exe`).
 
 ### Uninstall
 
@@ -69,6 +78,10 @@ Uninstalling removes the launchers only — your cached token files are left unt
 - **Linux/macOS:** the installer writes a single, marker-delimited block
   (`# BEGIN cc-backends` … `# END cc-backends`) into your rc file. Re-running replaces the block
   in place (idempotent); `--uninstall` removes exactly that block and nothing else.
+  The script is safe to **source** — `source <(curl … install.sh)` writes the rc block *and* loads the
+  launchers into the shell you're in (a child `curl | bash` process can't reach the parent shell, so
+  sourcing is the only way to make them live in the current terminal). All rc-mutating work runs in a
+  subshell, so `set -e`/`exit` never leak into — or kill — a shell that sourced it.
 - **Windows:** each command is a self-contained `.cmd` under `%USERPROFILE%\apps\aliases` (on PATH).
   Env vars are scoped with `setlocal`, so a backend launcher never pollutes your session.
 
