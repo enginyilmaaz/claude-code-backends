@@ -2,7 +2,8 @@
 
 One-line installers — **Linux/macOS and Windows** — for two Claude Code **backend launchers**:
 run Claude Code against the **Kimi (Moonshot)** or **Z.AI GLM** backend with a single command,
-with per-user token caching.
+with per-user token caching. Plus `ccskip` / `cxskip` — quick `--dangerously-skip-permissions`
+launchers for your **normal Anthropic login** (Opus 4.8 / Opus 5).
 
 **Version:** 1.0.0
 
@@ -14,6 +15,8 @@ with per-user token caching.
 | `cckimi-token` | Set/update the cached Kimi key. |
 | `ccglm` | Runs **Claude Code on the Z.AI GLM backend**. First run asks for your Z.AI key and caches it. |
 | `ccglm-token` | Set/update the cached Z.AI key. |
+| `ccskip` | Runs Claude Code on your **normal Anthropic login** (no backend token) — permissions skipped, effort max, pinned to **Opus 4.8**. |
+| `cxskip` | Same as `ccskip`, pinned to **Opus 5**. |
 
 `cckimi`/`ccglm` just point Claude Code at a different `ANTHROPIC_BASE_URL` + model via scoped env vars —
 your normal `claude` login is untouched, and the backend env never leaks into your shell.

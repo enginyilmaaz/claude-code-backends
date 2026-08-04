@@ -19,7 +19,7 @@ param([switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
 $aliasDir = Join-Path $env:USERPROFILE 'apps\aliases'
-$names = @('cckimi','ccglm','cckimi-token','ccglm-token')
+$names = @('cckimi','ccglm','cckimi-token','ccglm-token','ccskip','cxskip')
 
 function Remove-AliasDirFromUserPath([string]$dir) {
     $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if (-not $userPath) { return }
@@ -40,6 +40,14 @@ if ($Uninstall) {
 New-Item -ItemType Directory -Path $aliasDir -Force | Out-Null
 
 $cmds = [ordered]@{}
+$cmds['ccskip'] = @'
+@echo off
+call claude --dangerously-skip-permissions --effort max --model claude-opus-4-8 %*
+'@
+$cmds['cxskip'] = @'
+@echo off
+call claude --dangerously-skip-permissions --effort max --model claude-opus-5 %*
+'@
 $cmds['cckimi'] = @'
 @echo off
 setlocal
