@@ -15,7 +15,7 @@
   Uninstall:
     & ([scriptblock]::Create((irm https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.ps1))) -Uninstall
 #>
-param([switch]$Uninstall)
+param([switch]$Uninstall, [switch]$Yes)
 
 $ErrorActionPreference = 'Stop'
 $aliasDir = Join-Path $env:USERPROFILE 'apps\aliases'
@@ -35,6 +35,19 @@ if ($Uninstall) {
     Write-Host "OK  cckimi / ccglm removed from $aliasDir (and User PATH)." -ForegroundColor Green
     Write-Host "note: token files %USERPROFILE%\.kimi_token and %USERPROFILE%\.zai_token were left untouched."
     return
+}
+
+# These launchers run Claude Code with --dangerously-skip-permissions. Confirm once, at install.
+if (-not $Yes) {
+    if (-not [Environment]::UserInteractive) {
+        Write-Host "Non-interactive session; re-run with -Yes to confirm the skip-permissions install." -ForegroundColor Yellow
+        return
+    }
+    Write-Host ""
+    Write-Host "WARNING (DANGEROUS MODE): cckimi / ccglm / ccskip / cxskip run Claude Code with" -ForegroundColor Yellow
+    Write-Host "--dangerously-skip-permissions - it runs commands and edits files WITHOUT asking. Use only in trusted folders."
+    $ans = Read-Host "Install these launchers anyway? [y/N]"
+    if ($ans -notmatch '^\s*(y|yes)\s*$') { Write-Host "Aborted - nothing was changed."; return }
 }
 
 New-Item -ItemType Directory -Path $aliasDir -Force | Out-Null

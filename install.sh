@@ -134,6 +134,10 @@ __cc_backends_run() (
   [ -f "$HOME/.zshrc" ]  && targets+=("$HOME/.zshrc")
   if [ "${#targets[@]}" -eq 0 ]; then touch "$HOME/.bashrc"; targets+=("$HOME/.bashrc"); fi
 
+  # --yes / -y (or CC_ASSUME_YES=1) skips the install-time confirmation below.
+  assume_yes="${CC_ASSUME_YES:-0}"
+  for __a in "$@"; do case "$__a" in -y|--yes) assume_yes=1 ;; esac; done
+
   case "${1:-}" in
     --uninstall)
       for rc in "${targets[@]}"; do strip_block "$rc"; done
@@ -141,8 +145,23 @@ __cc_backends_run() (
       echo "note: token files ~/.kimi_token and ~/.zai_token were left untouched."
       exit 10 ;;
     -h|--help)
-      echo "usage: install.sh [--uninstall]"; exit 11 ;;
+      echo "usage: install.sh [--uninstall] [--yes]"; exit 11 ;;
   esac
+
+  # These launchers run Claude Code with --dangerously-skip-permissions. Confirm once, at install.
+  if [ "$assume_yes" != 1 ]; then
+    printf '\n\033[33m⚠  DANGEROUS MODE\033[0m — cckimi / ccglm / ccskip / cxskip run Claude Code with\n' >&2
+    printf '   \033[1m--dangerously-skip-permissions\033[0m: it runs commands and edits files WITHOUT asking.\n' >&2
+    printf '   Use only in directories you trust.\n' >&2
+    if [ -r /dev/tty ]; then
+      printf '   Install these launchers anyway? [y/N] ' >&2
+      read -r __ans < /dev/tty || __ans=""
+      case "$__ans" in y|Y|yes|YES|Yes) ;; *) printf '   aborted — nothing was changed.\n' >&2; exit 20 ;; esac
+    else
+      printf '   no terminal to confirm; re-run with --yes (or CC_ASSUME_YES=1) to proceed.\n' >&2
+      exit 20
+    fi
+  fi
 
   for rc in "${targets[@]}"; do
     strip_block "$rc"                    # idempotent: drop any previous block first

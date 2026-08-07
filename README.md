@@ -75,6 +75,10 @@ Uninstalling removes the launchers only — your cached token files are left unt
   `%USERPROFILE%\.kimi_token` / `.zai_token` on Windows (`icacls`, current-user only).
 - Nothing is committed or transmitted anywhere except the backend you call.
 - Rotate a key any time with `cckimi-token` / `ccglm-token` (or pass it as the first argument).
+- All launchers run Claude Code with `--dangerously-skip-permissions` (Claude runs commands and edits
+  files **without asking**). The **installer** warns and asks you to confirm once before installing —
+  pass `--yes` on Linux/macOS (`… | bash -s -- --yes`) or `-Yes` on Windows to skip that prompt in
+  automation. The launchers themselves never re-prompt, so keep them to directories you trust.
 
 ## 🎛️ Models per tier
 
