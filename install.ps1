@@ -32,7 +32,7 @@ if ($Uninstall) {
         Remove-Item -LiteralPath (Join-Path $aliasDir "$n.cmd") -Force -ErrorAction SilentlyContinue
     }
     Remove-AliasDirFromUserPath $aliasDir
-    Write-Host "OK  cckimi / ccglm removed from $aliasDir (and User PATH)." -ForegroundColor Green
+    Write-Host "OK  cckimi / ccglm / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
     Write-Host "note: token files %USERPROFILE%\.kimi_token and %USERPROFILE%\.zai_token were left untouched."
     return
 }
@@ -168,7 +168,7 @@ if (($cur -split ';') -notcontains $aliasDir) { $env:Path = ($cur.TrimEnd(';') +
 Write-Host ""
 Write-Host "OK  claude-code-backends installed -> $aliasDir (added to PATH)" -ForegroundColor Green
 Write-Host ""
-Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)"
+Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)   ccskip   cxskip"
 Write-Host ""
 Write-Host "Ready in THIS PowerShell session now (the alias folder was added to the current PATH)." -ForegroundColor Green
 Write-Host "Open a new window only for cmd.exe / other shells to pick up the persisted PATH."

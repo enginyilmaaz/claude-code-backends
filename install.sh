@@ -141,7 +141,7 @@ __cc_backends_run() (
   case "${1:-}" in
     --uninstall)
       for rc in "${targets[@]}"; do strip_block "$rc"; done
-      echo "$(g '✓') cckimi / ccglm removed from: ${targets[*]}"
+      echo "$(g '✓') cckimi / ccglm / ccskip / cxskip removed from: ${targets[*]}"
       echo "note: token files ~/.kimi_token and ~/.zai_token were left untouched."
       exit 10 ;;
     -h|--help)
@@ -171,7 +171,7 @@ __cc_backends_run() (
   echo
   echo "$(g '✓') claude-code-backends installed → ${targets[*]}"
   echo
-  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)"
+  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)   $(b ccskip)   $(b cxskip)"
   echo
   echo "first run of $(b cckimi)/$(b ccglm) asks for the backend API key and caches it in"
   echo "~/.kimi_token / ~/.zai_token (chmod 600); update later with cckimi-token / ccglm-token."
@@ -191,7 +191,7 @@ case "$-" in *i*) __cc_interactive=1 ;; esac
 if [ "$__cc_rc" -eq 0 ]; then
   if [ "$__cc_interactive" -eq 1 ]; then
     eval "$CC_BACKENDS_BLOCK"            # load into the CURRENT shell — ready immediately
-    printf '\n\033[32m✓\033[0m loaded into this shell — \033[1mcckimi\033[0m / \033[1mccglm\033[0m are ready to use now.\n\n'
+    printf '\n\033[32m✓\033[0m loaded into this shell — \033[1mcckimi\033[0m / \033[1mccglm\033[0m / \033[1mccskip\033[0m / \033[1mcxskip\033[0m are ready to use now.\n\n'
   else
     printf '\nreload your shell to use them now:\n'
     printf '  source ~/.bashrc            # or ~/.zshrc, or just open a new terminal\n'
