@@ -27,20 +27,20 @@ your normal `claude` login is untouched, and the backend env never leaks into yo
 Use the `source <(…)` form so the commands also load into your **current** shell right away:
 
 ```bash
-source <(curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh)
+source <(curl -fsSL https://bit.ly/465SVW2)
 ```
 
 Or the plain pipe (installs to your rc files; open a new terminal or `source ~/.bashrc` to use them):
 
 ```bash
-curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh | bash
+curl -fsSL https://bit.ly/465SVW2 | bash
 ```
 
 **Windows** (PowerShell — installs `.cmd` shims into `%USERPROFILE%\apps\aliases` and adds it to PATH,
 so they work from cmd, PowerShell and Run):
 
 ```powershell
-irm https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.ps1 | iex
+irm https://bit.ly/cc-backend-win | iex
 ```
 
 With the `source <(…)` form (Linux/macOS) the commands work in the current shell immediately.
@@ -51,12 +51,12 @@ On Windows they are ready in the **current PowerShell** session at once (a new w
 
 ```bash
 # Linux / macOS
-curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh | bash -s -- --uninstall
+curl -fsSL https://bit.ly/465SVW2 | bash -s -- --uninstall
 ```
 
 ```powershell
 # Windows
-& ([scriptblock]::Create((irm https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.ps1))) -Uninstall
+& ([scriptblock]::Create((irm https://bit.ly/cc-backend-win))) -Uninstall
 ```
 
 Uninstalling removes the launchers only — your cached token files are left untouched.
@@ -65,7 +65,9 @@ Uninstalling removes the launchers only — your cached token files are left unt
 
 | | URL |
 |------|-----|
-| **Gist** (quick install) | https://gist.github.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8 |
+| **Install** (Linux/macOS) | https://bit.ly/465SVW2 |
+| **Install** (Windows) | https://bit.ly/cc-backend-win |
+| **Gist** (mirror of the installers) | https://gist.github.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8 |
 | **Repository** (source) | https://github.com/enginyilmaaz/claude-code-backends |
 | **Gist ID** | `2b903923ea111f741ca50a878ee9d2f8` |
 
