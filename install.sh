@@ -23,6 +23,9 @@
 # Kept in a variable so a sourced install can eval it straight into the current shell.
 CC_BACKENDS_BLOCK=$(cat <<'CC_BACKENDS_EOF'
 # BEGIN cc-backends
+# Neutralize any pre-existing aliases of these names first: an alias of the same name would
+# both break the function definition below (parse error on '(') and shadow it at call time.
+unalias cckimi ccglm ccskip cxskip cckimi-token ccglm-token 2>/dev/null || true
 # ccskip / cxskip -> run Claude Code on your NORMAL Anthropic login (no backend token),
 # permissions skipped + effort max. ccskip pins Opus 4.8, cxskip pins Opus 5.
 ccskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-4-8 "$@"; }
