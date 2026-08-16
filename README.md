@@ -87,11 +87,11 @@ and the subagents get the flagship, while the lighter/background tiers get a che
 
 | Claude tier | `cckimi` (Kimi) | `ccglm` (Z.AI GLM) |
 |-------------|-----------------|--------------------|
-| main / Opus | `kimi-k3` (1M ctx) | `glm-5.2` (1M ctx) |
+| main / Opus | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) |
 | Sonnet | `kimi-k2.7-code` | `glm-4.6` |
 | Haiku *(background: summaries, titles)* | `kimi-k2.7-code` | `glm-4.5-air` |
 | Fable *(fast tier)* | `kimi-k2.7-code-highspeed` | `glm-4.7-flashx` |
-| subagents | `kimi-k3` (1M ctx) | `glm-5.2` (1M ctx) |
+| subagents | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) |
 
 To use a different model for a tier, edit the matching `ANTHROPIC_DEFAULT_*_MODEL` (or
 `CLAUDE_CODE_SUBAGENT_MODEL`) line in the launcher block written to your rc file — model IDs come
