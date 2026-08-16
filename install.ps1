@@ -55,7 +55,7 @@ New-Item -ItemType Directory -Path $aliasDir -Force | Out-Null
 $cmds = [ordered]@{}
 $cmds['ccskip'] = @'
 @echo off
-call claude --dangerously-skip-permissions --effort max --model claude-opus-4-8 %*
+call claude --dangerously-skip-permissions --effort max --model claude-opus-5 %*
 '@
 $cmds['cxskip'] = @'
 @echo off

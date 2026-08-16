@@ -27,8 +27,8 @@ CC_BACKENDS_BLOCK=$(cat <<'CC_BACKENDS_EOF'
 # both break the function definition below (parse error on '(') and shadow it at call time.
 unalias cckimi ccglm ccskip cxskip cckimi-token ccglm-token 2>/dev/null || true
 # ccskip / cxskip -> run Claude Code on your NORMAL Anthropic login (no backend token),
-# permissions skipped + effort max. ccskip pins Opus 4.8, cxskip pins Opus 5.
-ccskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-4-8 "$@"; }
+# permissions skipped + effort max. Both pin the latest Opus (claude-opus-5).
+ccskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-5 "$@"; }
 cxskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-5 "$@"; }
 
 # cckimi -> runs Claude Code on the Kimi backend (token lives in ~/.kimi_token, chmod 600)
