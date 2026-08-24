@@ -8,7 +8,7 @@
   from ANY shell (cmd, PowerShell, Run):
     cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
     ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
-    ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token, ccor-model)
+    ccort   -> run Claude Code on the OpenRouter gateway        (+ ccort-token, ccort-model)
     ccart  -> run Claude Code on the AgentRouter gateway       (+ ccart-token, ccart-model)
   Env vars are scoped via setlocal to each .cmd process, so they never leak into the caller.
   Claude Code itself is installed when missing, and its bin dirs are added to the User PATH.
@@ -22,7 +22,7 @@ param([switch]$Uninstall, [switch]$Yes)
 
 $ErrorActionPreference = 'Stop'
 $aliasDir = Join-Path $env:USERPROFILE 'apps\aliases'
-$names = @('cckimi','ccglm','ccor','ccart','cckimi-token','ccglm-token','ccor-token','ccor-model',
+$names = @('cckimi','ccglm','ccort','ccart','cckimi-token','ccglm-token','ccort-token','ccort-model',
            'ccart-token','ccart-model','ccskip','cxskip')
 # Where the Claude Code installers put the binary - both go on PATH so 'claude' always resolves.
 $claudeBinDirs = @((Join-Path $env:USERPROFILE '.local\bin'), (Join-Path $env:USERPROFILE '.claude\bin'))
@@ -78,32 +78,117 @@ function Install-ClaudeCode {
     return (Test-ClaudeInstalled)
 }
 
+
+# ------------------------------------------------------------------ catalogue ---
+# Order shown in the picker; Cmds is everything the entry installs.
+$catalogue = @(
+    @{ Key='ccskip'; Label='ccskip / cxskip   your Anthropic login, skip-permissions'; Cmds=@('ccskip','cxskip') }
+    @{ Key='cckimi'; Label='cckimi            Kimi (Moonshot) backend';                Cmds=@('cckimi','cckimi-token') }
+    @{ Key='ccglm';  Label='ccglm             Z.AI GLM backend';                       Cmds=@('ccglm','ccglm-token') }
+    @{ Key='ccort';  Label='ccort             OpenRouter gateway (stealth/ox-alpha)';  Cmds=@('ccort','ccort-token','ccort-model') }
+    @{ Key='ccart';  Label='ccart             AgentRouter gateway (claude-opus-5)';    Cmds=@('ccart','ccart-token','ccart-model') }
+)
+# Shims from earlier versions, deleted on every confirmed run without asking: the ccor
+# family was renamed to ccort, claude-skip/codex-skip are long gone.
+$deprecated = @('ccor','ccor-token','ccor-model','claude-skip','codex-skip')
+
+function Test-CmdInstalled([string]$name) { Test-Path -LiteralPath (Join-Path $aliasDir "$name.cmd") }
+
+# Numbered checkbox picker: SPACE toggles, arrows move, ENTER confirms, q cancels.
+# Returns the chosen keys, or $null when cancelled.
+function Show-LauncherPicker {
+    $sel = @{}; foreach ($e in $catalogue) { $sel[$e.Key] = $true }
+    $cur = 0; $first = $true; $n = $catalogue.Count
+    while ($true) {
+        if ($first) { $first = $false }
+        else {
+            $top = [Console]::CursorTop - ($n + 3)
+            if ($top -lt 0) { $top = 0 }
+            [Console]::SetCursorPosition(0, $top)
+        }
+        Write-Host "  Select the launchers to install:                                        "
+        for ($i = 0; $i -lt $n; $i++) {
+            $e = $catalogue[$i]
+            $box = if ($sel[$e.Key]) { '[x]' } else { '[ ]' }
+            $ptr = if ($i -eq $cur) { '>' } else { ' ' }
+            $mark = if (Test-CmdInstalled $e.Key) { '  installed' } else { '' }
+            Write-Host (" {0} {1} {2}{3}          " -f $ptr, $box, $e.Label, $mark)
+        }
+        Write-Host "                                                                          "
+        Write-Host "  SPACE toggle - up/down move - a all - n none - ENTER confirm - q cancel  "
+        $k = [Console]::ReadKey($true)
+        switch ($k.Key) {
+            'Spacebar'   { $sel[$catalogue[$cur].Key] = -not $sel[$catalogue[$cur].Key] }
+            'UpArrow'    { if ($cur -gt 0) { $cur-- } else { $cur = $n - 1 } }
+            'DownArrow'  { $cur = ($cur + 1) % $n }
+            'Enter'      { return @($catalogue | Where-Object { $sel[$_.Key] } | ForEach-Object { $_.Key }) }
+            default {
+                switch ($k.KeyChar) {
+                    'a' { foreach ($e in $catalogue) { $sel[$e.Key] = $true } }
+                    'n' { foreach ($e in $catalogue) { $sel[$e.Key] = $false } }
+                    'q' { return $null }
+                }
+            }
+        }
+    }
+}
+
 if ($Uninstall) {
-    foreach ($n in $names) {
+    foreach ($n in ($names + $deprecated)) {
         Remove-Item -LiteralPath (Join-Path $aliasDir "$n.cmd") -Force -ErrorAction SilentlyContinue
     }
     Remove-AliasDirFromUserPath $aliasDir
-    Write-Host "OK  cckimi / ccglm / ccor / ccart / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
+    Write-Host "OK  cckimi / ccglm / ccort / ccart / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
     Write-Host "note: the cached token/model files (.kimi_token, .zai_token, .openrouter_token,"
     Write-Host "      .agentrouter_token and the matching *_model files) were left untouched, and"
     Write-Host "      Claude Code itself is not uninstalled."
     return
 }
 
-# These launchers run Claude Code with --dangerously-skip-permissions. Confirm once, at install.
+# Pick the launchers, then review what will be written, overwritten and removed.
+$chosen = @($catalogue | ForEach-Object { $_.Key })
+$staleFound = @($deprecated | Where-Object { Test-CmdInstalled $_ })
+
 if (-not $Yes) {
     if (-not [Environment]::UserInteractive) {
-        Write-Host "Non-interactive session; re-run with -Yes to confirm the skip-permissions install." -ForegroundColor Yellow
+        Write-Host "Non-interactive session; re-run with -Yes to install everything without the picker." -ForegroundColor Yellow
         return
     }
     Write-Host ""
-    Write-Host "WARNING (DANGEROUS MODE): cckimi / ccglm / ccor / ccart / ccskip / cxskip run Claude Code with" -ForegroundColor Yellow
-    Write-Host "--dangerously-skip-permissions - it runs commands and edits files WITHOUT asking. Use only in trusted folders."
-    $ans = Read-Host "Install these launchers anyway? [y/N]"
-    if ($ans -notmatch '^\s*(y|yes)\s*$') { Write-Host "Aborted - nothing was changed."; return }
+    $chosen = Show-LauncherPicker
+    if ($null -eq $chosen) { Write-Host "`nCancelled - nothing was changed."; return }
+
+    $over = @($chosen | Where-Object { Test-CmdInstalled $_ })
+    Write-Host ""
+    Write-Host "  Review" -ForegroundColor Cyan
+    if ($chosen.Count -gt 0) {
+        Write-Host ("    install    : " + ($chosen -join ' '))
+        foreach ($k in $chosen) {
+            Write-Host ("                 " + (($catalogue | Where-Object { $_.Key -eq $k }).Cmds -join ' '))
+        }
+    } else {
+        Write-Host "    install    : (nothing selected)"
+    }
+    if ($over.Count -gt 0)       { Write-Host ("    overwrite  : " + ($over -join ' ') + "  (already installed)") -ForegroundColor Yellow }
+    if ($staleFound.Count -gt 0) { Write-Host ("    remove     : " + ($staleFound -join ' ') + "  (deprecated)") -ForegroundColor Yellow }
+    Write-Host ""
+    Write-Host "    these launchers run Claude Code with --dangerously-skip-permissions -" -ForegroundColor Yellow
+    Write-Host "    it runs commands and edits files WITHOUT asking. Use only in trusted folders."
+    Write-Host ""
+    Write-Host "      1) Confirm"
+    Write-Host "      2) Cancel"
+    $ans = Read-Host "    choice [1/2]"
+    if ($ans -notmatch '^\s*(1|y|yes)\s*$') { Write-Host "    Cancelled - nothing was changed."; return }
 }
 
+if ($chosen.Count -eq 0) { Write-Host "Nothing selected - nothing was changed."; return }
+
 New-Item -ItemType Directory -Path $aliasDir -Force | Out-Null
+
+# Deprecated shims go without asking, now that the run is confirmed.
+foreach ($d in $deprecated) {
+    Remove-Item -LiteralPath (Join-Path $aliasDir "$d.cmd") -Force -ErrorAction SilentlyContinue
+}
 
 $cmds = [ordered]@{}
 $cmds['ccskip'] = @'
@@ -172,7 +257,7 @@ set "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
 set "API_TIMEOUT_MS=3000000"
 call claude --dangerously-skip-permissions %*
 '@
-$cmds['ccor'] = @'
+$cmds['ccort'] = @'
 @echo off
 setlocal
 set "TOKENFILE=%USERPROFILE%\.openrouter_token"
@@ -180,16 +265,16 @@ set "MODELFILE=%USERPROFILE%\.openrouter_model"
 set "token="
 if exist "%TOKENFILE%" set /p token=<"%TOKENFILE%"
 if not "%token%"=="" goto :run
-set /p token=ccor: no API key found. Enter your OpenRouter API key:
+set /p token=ccort: no API key found. Enter your OpenRouter API key:
 if "%token%"=="" (
-    echo ccor: no key entered, aborting.
+    echo ccort: no key entered, aborting.
     exit /b 1
 )
 >"%TOKENFILE%" echo %token%
 icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
-echo ccor: key saved to %TOKENFILE% (current-user only).
+echo ccort: key saved to %TOKENFILE% (current-user only).
 :run
-rem ---- Models: leave these EMPTY to follow ccor-model / the default below ----------
+rem ---- Models: leave these EMPTY to follow ccort-model / the default below ----------
 rem Fill one in only to pin that tier here, e.g. set "OR_HAIKU_MODEL=z-ai/glm-4.7-flash".
 rem Model ids come from https://openrouter.ai/models
 set "OR_MODEL="
@@ -203,7 +288,7 @@ rem Resolution order for the main model: pinned above -> .openrouter_model -> de
 if "%OR_MODEL%"=="" if exist "%MODELFILE%" set /p OR_MODEL=<"%MODELFILE%"
 if "%OR_MODEL%"=="" (
     set "OR_MODEL=%OR_DEFAULT_MODEL%"
-    echo ccor: no model set, falling back to %OR_DEFAULT_MODEL% -- change it with: ccor-model your/model-id
+    echo ccort: no model set, falling back to %OR_DEFAULT_MODEL% -- change it with: ccort-model your/model-id
 )
 if "%OR_SONNET_MODEL%"=="" set "OR_SONNET_MODEL=%OR_MODEL%"
 if "%OR_HAIKU_MODEL%"=="" set "OR_HAIKU_MODEL=%OR_MODEL%"
@@ -253,21 +338,21 @@ if "%key%"=="" (
 icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
 echo ccglm-token: key written to %TOKENFILE% (current-user only).
 '@
-$cmds['ccor-token'] = @'
+$cmds['ccort-token'] = @'
 @echo off
 setlocal
 set "TOKENFILE=%USERPROFILE%\.openrouter_token"
 set "key=%~1"
-if "%key%"=="" set /p key=ccor-token - paste API key:
+if "%key%"=="" set /p key=ccort-token - paste API key:
 if "%key%"=="" (
-    echo ccor-token: no key given.
+    echo ccort-token: no key given.
     exit /b 1
 )
 >"%TOKENFILE%" echo %key%
 icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
-echo ccor-token: key written to %TOKENFILE% (current-user only).
+echo ccort-token: key written to %TOKENFILE% (current-user only).
 '@
-$cmds['ccor-model'] = @'
+$cmds['ccort-model'] = @'
 @echo off
 setlocal
 set "MODELFILE=%USERPROFILE%\.openrouter_model"
@@ -276,7 +361,7 @@ if not "%~1"=="" set "chosen=%~1"
 if not "%chosen%"=="" goto :save
 set "current="
 if exist "%MODELFILE%" set /p current=<"%MODELFILE%"
-echo ccor-model - pick a model:
+echo ccort-model - pick a model:
 if "%current%"=="stealth/ox-alpha" (echo    1. stealth/ox-alpha   [current]) else (echo    1. stealth/ox-alpha)
 if "%current%"=="anthropic/claude-opus-4.8" (echo    2. anthropic/claude-opus-4.8   [current]) else (echo    2. anthropic/claude-opus-4.8)
 if "%current%"=="anthropic/claude-sonnet-5" (echo    3. anthropic/claude-sonnet-5   [current]) else (echo    3. anthropic/claude-sonnet-5)
@@ -302,11 +387,11 @@ if "%pick%"=="10" set "chosen=z-ai/glm-5"
 if "%pick%"=="0" set /p chosen=model id: 
 :save
 if "%chosen%"=="" (
-    echo ccor-model: nothing picked, %MODELFILE% left unchanged.
+    echo ccort-model: nothing picked, %MODELFILE% left unchanged.
     exit /b 1
 )
 >"%MODELFILE%" echo %chosen%
-echo ccor-model: model set to %chosen% (%MODELFILE%).
+echo ccort-model: model set to %chosen% (%MODELFILE%).
 echo echo More ids: https://openrouter.ai/models
 '@
 $cmds['ccart'] = @'
@@ -404,7 +489,10 @@ if "%chosen%"=="" (
 echo ccart-model: model set to %chosen% (%MODELFILE%).
 '@
 
+$wanted = @()
+foreach ($k in $chosen) { $wanted += ($catalogue | Where-Object { $_.Key -eq $k }).Cmds }
 foreach ($name in $cmds.Keys) {
+    if ($wanted -notcontains $name) { continue }
     # force CRLF + ASCII (no BOM) so cmd.exe handles labels/goto correctly
     $body = ($cmds[$name] -replace "`r`n", "`n") -replace "`n", "`r`n"
     if (-not $body.EndsWith("`r`n")) { $body += "`r`n" }
@@ -420,18 +508,20 @@ $claudeOk = Install-ClaudeCode
 Write-Host ""
 Write-Host "OK  claude-code-backends installed -> $aliasDir (added to PATH)" -ForegroundColor Green
 Write-Host ""
-Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)"
-Write-Host "          ccor (+ccor-token, ccor-model)   ccart (+ccart-token, ccart-model)"
-Write-Host "          ccskip   cxskip"
+Write-Host "installed:"
+foreach ($k in $chosen) {
+    Write-Host ("  " + (($catalogue | Where-Object { $_.Key -eq $k }).Cmds -join '   '))
+}
+if ($staleFound.Count -gt 0) { Write-Host ""; Write-Host ("removed (deprecated): " + ($staleFound -join ' ')) }
 Write-Host ""
 Write-Host "Ready in THIS PowerShell session now (the alias folder was added to the current PATH)." -ForegroundColor Green
 Write-Host "Open a new window only for cmd.exe / other shells to pick up the persisted PATH."
 Write-Host "First run of a backend launcher asks for its API key and caches it in %USERPROFILE%\.kimi_token"
 Write-Host "/ .zai_token / .openrouter_token / .agentrouter_token; update later with cckimi-token /"
-Write-Host "ccglm-token / ccor-token / ccart-token."
+Write-Host "ccglm-token / ccort-token / ccart-token."
 Write-Host ""
-Write-Host "ccor defaults to the free stealth/ox-alpha model, ccart to claude-opus-5." -ForegroundColor Yellow
-Write-Host "Run ccor-model / ccart-model with no argument to pick another from a numbered list."
+Write-Host "ccort defaults to the free stealth/ox-alpha model, ccart to claude-opus-5." -ForegroundColor Yellow
+Write-Host "Run ccort-model / ccart-model with no argument to pick another from a numbered list."
 Write-Host ""
 if ($claudeOk) {
     Write-Host "OK  Claude Code: $((Get-Command claude).Source)" -ForegroundColor Green

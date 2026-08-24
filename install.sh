@@ -2,52 +2,75 @@
 # claude-code-backends — installer (Linux/macOS)
 # Repo: https://github.com/enginyilmaaz/claude-code-backends
 #
-# Adds three Claude Code backend launchers to your rc file (~/.bashrc and ~/.zshrc if present):
-#   cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
-#   ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
-#   ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token, ccor-model)
-#   ccart  -> run Claude Code on the AgentRouter gateway       (+ ccart-token, ccart-model)
+# Interactive picker for the Claude Code backend launchers, written into your rc file
+# (~/.bashrc and ~/.zshrc if present):
+#   ccskip / cxskip -> your NORMAL Anthropic login, permissions skipped (Opus 5)
+#   cckimi -> Kimi (Moonshot) backend        (+ cckimi-token)
+#   ccglm  -> Z.AI GLM backend               (+ ccglm-token)
+#   ccort  -> OpenRouter gateway             (+ ccort-token, ccort-model)
+#   ccart  -> AgentRouter gateway            (+ ccart-token, ccart-model)
 #
-# Claude Code itself is installed automatically when it is missing, and the directories its
-# installer uses (~/.local/bin, ~/.claude/bin) are added to PATH by the rc block.
+# SPACE toggles, arrows move, ENTER confirms; a summary then asks you to confirm or cancel.
+# Anything already installed is listed as an overwrite; DEPRECATED commands (e.g. the old
+# ccor family, renamed to ccort) are removed on confirm without asking.
+#
+# Claude Code itself is installed when missing, and the directories its installer uses
+# (~/.local/bin, ~/.claude/bin) are added to PATH by the rc block.
 #
 # Install AND load into your current shell (recommended — commands work right away):
 #   source <(curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh)
 # Plain install (open a new terminal, or `source ~/.bashrc`, to pick them up):
 #   curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh | bash
+# Non-interactive (installs everything, no picker):
+#   curl -fsSL … /install.sh | bash -s -- --yes
 # Uninstall:
-#   curl -fsSL https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.sh | bash -s -- --uninstall
+#   curl -fsSL … /install.sh | bash -s -- --uninstall
 #
-# Safe to run either way. When EXECUTED (curl|bash, ./install.sh) it just writes the rc
-# block. When SOURCED from an interactive shell (source <(curl …)) it ALSO loads the
-# launchers into the running shell, so cckimi / ccglm / ccor / ccart work in the current terminal without
-# opening a new one — a child process (curl|bash) can never inject into the parent shell,
-# so sourcing is the only way to reach the terminal you are typing in.
+# Safe to run either way. When EXECUTED it just writes the rc block. When SOURCED from an
+# interactive shell it ALSO loads the launchers into the running shell, so they work in the
+# current terminal without opening a new one.
 
-# The backend launchers, delimited by markers so they can be replaced idempotently.
-# Kept in a variable so a sourced install can eval it straight into the current shell.
-CC_BACKENDS_BLOCK=$(cat <<'CC_BACKENDS_EOF'
-# BEGIN cc-backends
-# Neutralize any pre-existing aliases of these names first: an alias of the same name would
-# both break the function definition below (parse error on '(') and shadow it at call time.
-unalias cckimi ccglm ccor ccart ccskip cxskip cckimi-token ccglm-token ccor-token ccor-model \
-        ccart-token ccart-model 2>/dev/null || true
+# ------------------------------------------------------------------ catalogue ---
+# Order shown in the picker. Each key maps to a label, the extra commands it brings
+# along, and the rc snippet emitted by __cc_part.
+CC_KEYS="ccskip cckimi ccglm ccort ccart"
 
-# Claude Code's native installer drops its binary in ~/.local/bin (or ~/.claude/bin). Put both
-# on PATH so `command claude` below resolves even in a shell that predates the install.
-for __cc_bin in "$HOME/.local/bin" "$HOME/.claude/bin"; do
-    if [ -d "$__cc_bin" ]; then
-        case ":$PATH:" in *":$__cc_bin:"*) ;; *) PATH="$__cc_bin:$PATH" ;; esac
-    fi
-done
-unset __cc_bin
-export PATH
+# Commands from earlier versions that are wiped on every confirmed run, no questions
+# asked: the ccor family was renamed to ccort, claude-skip/codex-skip are long gone.
+CC_DEPRECATED="ccor ccor-token ccor-model claude-skip codex-skip"
 
+__cc_label() {
+    case "$1" in
+        ccskip) printf 'ccskip / cxskip   your Anthropic login, skip-permissions (Opus 5)' ;;
+        cckimi) printf 'cckimi            Kimi (Moonshot) backend' ;;
+        ccglm)  printf 'ccglm             Z.AI GLM backend' ;;
+        ccort)  printf 'ccort             OpenRouter gateway (stealth/ox-alpha)' ;;
+        ccart)  printf 'ccart             AgentRouter gateway (claude-opus-5)' ;;
+    esac
+}
+
+# Every command a key installs — used for the "already installed" check and the summary.
+__cc_cmds() {
+    case "$1" in
+        ccskip) printf 'ccskip cxskip' ;;
+        cckimi) printf 'cckimi cckimi-token' ;;
+        ccglm)  printf 'ccglm ccglm-token' ;;
+        ccort)  printf 'ccort ccort-token ccort-model' ;;
+        ccart)  printf 'ccart ccart-token ccart-model' ;;
+    esac
+}
+
+# The rc snippet for one catalogue key.
+__cc_part() {
+    case "$1" in
+    ccskip) cat <<'CC_PART_EOF'
 # ccskip / cxskip -> run Claude Code on your NORMAL Anthropic login (no backend token),
 # permissions skipped + effort max. Both pin the latest Opus (claude-opus-5).
 ccskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-5 "$@"; }
 cxskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-5 "$@"; }
-
+CC_PART_EOF
+    ;;
+    cckimi) cat <<'CC_PART_EOF'
 # cckimi -> runs Claude Code on the Kimi backend (token lives in ~/.kimi_token, chmod 600)
 cckimi() {
     local token_file="$HOME/.kimi_token"
@@ -80,7 +103,9 @@ cckimi() {
 }
 
 cckimi-token() { __cc_set_token cckimi "$HOME/.kimi_token" "$1"; }
-
+CC_PART_EOF
+    ;;
+    ccglm) cat <<'CC_PART_EOF'
 # ccglm -> runs Claude Code on the Z.AI GLM backend (token lives in ~/.zai_token, chmod 600)
 ccglm() {
     local token_file="$HOME/.zai_token"
@@ -113,28 +138,30 @@ ccglm() {
 }
 
 ccglm-token() { __cc_set_token ccglm "$HOME/.zai_token" "$1"; }
-
-# ccor -> runs Claude Code on the OpenRouter gateway (key lives in ~/.openrouter_token, chmod 600)
-# The model id lives in ~/.openrouter_model -- set or change it with: ccor-model <id>
-ccor() {
+CC_PART_EOF
+    ;;
+    ccort) cat <<'CC_PART_EOF'
+# ccort -> runs Claude Code on the OpenRouter gateway (key lives in ~/.openrouter_token, chmod 600)
+# The model id lives in ~/.openrouter_model -- set or change it with: ccort-model <id>
+ccort() {
     local token_file="$HOME/.openrouter_token"
     local model_file="$HOME/.openrouter_model"
     local token
     token="$([ -r "$token_file" ] && tr -d '[:space:]' < "$token_file")"
     if [ -z "$token" ]; then
-        printf 'ccor: no API key found. Enter your OpenRouter API key and press Enter: ' >&2
+        printf 'ccort: no API key found. Enter your OpenRouter API key and press Enter: ' >&2
         IFS= read -rs token < /dev/tty
         printf '\n' >&2
         token="$(printf '%s' "$token" | tr -d '[:space:]')"
         if [ -z "$token" ]; then
-            printf 'ccor: no key entered, aborting.\n' >&2
+            printf 'ccort: no key entered, aborting.\n' >&2
             return 1
         fi
         ( umask 177; printf '%s\n' "$token" > "$token_file" ) && chmod 600 "$token_file"
-        printf 'ccor: key saved to %s (mode 600).\n' "$token_file" >&2
+        printf 'ccort: key saved to %s (mode 600).\n' "$token_file" >&2
     fi
 
-    # ---- Models: leave these EMPTY to follow `ccor-model` / the default below --------
+    # ---- Models: leave these EMPTY to follow `ccort-model` / the default below --------
     # Fill a line in only to pin that tier here, e.g. or_haiku_model="z-ai/glm-4.7-flash".
     # Model ids come from https://openrouter.ai/models
     local or_model=""            # main + Opus tier
@@ -150,7 +177,7 @@ ccor() {
     fi
     if [ -z "$or_model" ]; then
         or_model="$or_default_model"
-        printf 'ccor: no model set, falling back to %s -- change it with: ccor-model <id>\n' "$or_model" >&2
+        printf 'ccort: no model set, falling back to %s -- change it with: ccort-model <id>\n' "$or_model" >&2
     fi
     : "${or_sonnet_model:=$or_model}"
     : "${or_haiku_model:=$or_model}"
@@ -174,14 +201,14 @@ ccor() {
     command claude --dangerously-skip-permissions "$@"
 }
 
-ccor-token() { __cc_set_token ccor "$HOME/.openrouter_token" "$1"; }
+ccort-token() { __cc_set_token ccort "$HOME/.openrouter_token" "$1"; }
 
-# ccor-model [id] -- set the model ccor runs on (kept in .openrouter_model).
+# ccort-model [id] -- set the model ccort runs on (kept in .openrouter_model).
 # With no argument it shows a numbered picker; option 0 takes any id from https://openrouter.ai/models
-ccor-model() {
+ccort-model() {
     local model_file="$HOME/.openrouter_model" id="$1"
     if [ -z "$id" ]; then
-        __cc_pick_model ccor-model "$model_file" \
+        __cc_pick_model ccort-model "$model_file" \
         stealth/ox-alpha \
         anthropic/claude-opus-4.8 \
         anthropic/claude-sonnet-5 \
@@ -196,9 +223,11 @@ ccor-model() {
     fi
     id="$(printf '%s' "$id" | tr -d '[:space:]')"
     printf '%s\n' "$id" > "$model_file" || return 1
-    printf 'ccor-model: model set to %s (%s)\n' "$id" "$model_file" >&2
+    printf 'ccort-model: model set to %s (%s)\n' "$id" "$model_file" >&2
 }
-
+CC_PART_EOF
+    ;;
+    ccart) cat <<'CC_PART_EOF'
 # ccart -> runs Claude Code on the AgentRouter gateway (key lives in ~/.agentrouter_token, chmod 600)
 # The model id lives in ~/.agentrouter_model -- set or change it with: ccart-model <id>
 ccart() {
@@ -275,7 +304,21 @@ ccart-model() {
     printf '%s\n' "$id" > "$model_file" || return 1
     printf 'ccart-model: model set to %s (%s)\n' "$id" "$model_file" >&2
 }
-
+CC_PART_EOF
+    ;;
+    __path) cat <<'CC_PART_EOF'
+# Claude Code's native installer drops its binary in ~/.local/bin (or ~/.claude/bin). Put both
+# on PATH so `command claude` below resolves even in a shell that predates the install.
+for __cc_bin in "$HOME/.local/bin" "$HOME/.claude/bin"; do
+    if [ -d "$__cc_bin" ]; then
+        case ":$PATH:" in *":$__cc_bin:"*) ;; *) PATH="$__cc_bin:$PATH" ;; esac
+    fi
+done
+unset __cc_bin
+export PATH
+CC_PART_EOF
+    ;;
+    __set_token) cat <<'CC_PART_EOF'
 # __cc_set_token <label> <token_file> [key] -- shared writer for the cc*-token helpers
 __cc_set_token() {
     local label="$1" token_file="$2" key="$3"
@@ -293,7 +336,9 @@ __cc_set_token() {
         "$label" "$token_file" "${#key}" \
         "$(stat -c '%a' "$token_file" 2>/dev/null || echo '600')" "$label"
 }
-
+CC_PART_EOF
+    ;;
+    __pick_model) cat <<'CC_PART_EOF'
 # __cc_pick_model <label> <model_file> <id...> -- numbered picker shared by the cc*-model
 # helpers. Prints to stderr, reads from /dev/tty, writes the chosen id to <model_file>.
 __cc_pick_model() {
@@ -331,67 +376,209 @@ __cc_pick_model() {
     printf '%s\n' "$chosen" > "$model_file" || return 1
     printf '%s: model set to %s (%s)\n' "$label" "$chosen" "$model_file" >&2
 }
-# END cc-backends
-CC_BACKENDS_EOF
+CC_PART_EOF
+    ;;
+    esac
+}
+
+# ------------------------------------------------------------------------ TUI ---
+# Runs in a `bash -c` child so it works even when this script was SOURCED from zsh
+# (which has no `read -rsn1`). Reads "key|label|marker" lines on stdin, draws on
+# /dev/tty, prints the chosen keys — or __CANCEL__ — on stdout.
+CC_TUI=$(cat <<'CC_TUI_EOF'
+rows=(); while IFS= read -r l; do rows+=("$l"); done
+n=${#rows[@]}; [ "$n" -eq 0 ] && exit 0
+sel=(); for ((i=0;i<n;i++)); do sel[i]=1; done
+cur=0; first=1
+draw() {
+    if [ "$first" = 1 ]; then first=0; else printf '\033[%dA' "$((n+3))" >/dev/tty; fi
+    {
+        printf '\r\033[K  \033[1mSelect the launchers to install:\033[0m\n'
+        for ((i=0;i<n;i++)); do
+            key=${rows[i]%%|*}; rest=${rows[i]#*|}; label=${rest%%|*}; mark=${rest#*|}
+            box='[ ]'; [ "${sel[i]}" = 1 ] && box='[x]'
+            ptr=' '; [ "$i" = "$cur" ] && ptr='>'
+            printf '\r\033[K %s %s %s' "$ptr" "$box" "$label"
+            [ -n "$mark" ] && printf '  \033[33m%s\033[0m' "$mark"
+            printf '\n'
+        done
+        printf '\r\033[K\n'
+        printf '\r\033[K  \033[2mSPACE toggle · up/down move · a all · n none · ENTER confirm · q cancel\033[0m\n'
+    } >/dev/tty
+}
+while :; do
+    draw
+    IFS= read -rsn1 k </dev/tty || k=''
+    case "$k" in
+        '') break ;;
+        ' ') if [ "${sel[cur]}" = 1 ]; then sel[cur]=0; else sel[cur]=1; fi ;;
+        a|A) for ((i=0;i<n;i++)); do sel[i]=1; done ;;
+        n|N) for ((i=0;i<n;i++)); do sel[i]=0; done ;;
+        q|Q) printf '__CANCEL__'; exit 0 ;;
+        j) cur=$(( (cur+1) % n )) ;;
+        k) if [ "$cur" -gt 0 ]; then cur=$((cur-1)); else cur=$((n-1)); fi ;;
+        $'\033')
+            IFS= read -rsn2 -t 1 r </dev/tty || r=''
+            case "$r" in
+                '[A') if [ "$cur" -gt 0 ]; then cur=$((cur-1)); else cur=$((n-1)); fi ;;
+                '[B') cur=$(( (cur+1) % n )) ;;
+            esac ;;
+    esac
+done
+out=''
+for ((i=0;i<n;i++)); do [ "${sel[i]}" = 1 ] && out="$out ${rows[i]%%|*}"; done
+printf '%s' "${out# }"
+CC_TUI_EOF
 )
 
+# --------------------------------------------------------------------- runner ---
 # All file-mutating work runs in a SUBSHELL so `set -e` / `exit` can never leak into a
-# shell that SOURCED this script (either would kill the user's terminal on error).
-# Exit status back to the caller: 0 installed · 10 uninstalled · 11 help · anything else = error.
+# shell that SOURCED this script. Exit status: 0 installed · 10 uninstalled · 11 help ·
+# 20 cancelled · anything else = error. The block to eval into a sourced shell is handed
+# back through a temp file, since a subshell cannot export a variable to its parent.
+CC_TMP_BLOCK="${TMPDIR:-/tmp}/.cc-backends-block.$$"
+
 __cc_backends_run() (
-  set -euo pipefail
+  set -uo pipefail
   g(){ printf '\033[32m%s\033[0m' "$1"; }
   b(){ printf '\033[1m%s\033[0m' "$1"; }
+  y(){ printf '\033[33m%s\033[0m' "$1"; }
 
-  strip_block() {  # remove any existing block from $1
+  strip_block() {                       # remove our marker block from $1
     [ -f "$1" ] || return 0
     sed -i '/^# BEGIN cc-backends$/,/^# END cc-backends$/d' "$1"
   }
 
-  # Pick target rc files: those that exist; if none, create ~/.bashrc.
+  # Delete a deprecated command wherever it sits in the rc file (function, one-liner
+  # function, or alias) plus the comment line above it. Runs on every confirmed install.
+  purge_deprecated() {
+    local rc="$1" name
+    [ -f "$rc" ] || return 0
+    for name in $CC_DEPRECATED; do
+      sed -i -e "/^${name}[[:space:]]*()[[:space:]]*{.*}[[:space:]]*\$/d" \
+             -e "/^${name}[[:space:]]*()[[:space:]]*{[[:space:]]*\$/,/^}\$/d" \
+             -e "/^alias ${name}=/d" \
+             -e "/^# ${name} ->/d" -e "/^# ${name} \[id\]/d" "$rc"
+    done
+  }
+
+  present() {                           # is command $1 defined in any target rc?
+    local name="$1" rc
+    for rc in "${targets[@]}"; do
+      grep -qE "^${name}[[:space:]]*\(\)" "$rc" 2>/dev/null && return 0
+      grep -q "^alias ${name}=" "$rc" 2>/dev/null && return 0
+    done
+    return 1
+  }
+
+  case "${1:-}" in
+    -h|--help)
+      echo "usage: install.sh [--uninstall] [--yes]"
+      echo "  --yes  install every launcher without the picker (for automation)"
+      exit 11 ;;
+  esac
+
   targets=()
   [ -f "$HOME/.bashrc" ] && targets+=("$HOME/.bashrc")
   [ -f "$HOME/.zshrc" ]  && targets+=("$HOME/.zshrc")
   if [ "${#targets[@]}" -eq 0 ]; then touch "$HOME/.bashrc"; targets+=("$HOME/.bashrc"); fi
 
-  # --yes / -y (or CC_ASSUME_YES=1) skips the install-time confirmation below.
   assume_yes="${CC_ASSUME_YES:-0}"
   for __a in "$@"; do case "$__a" in -y|--yes) assume_yes=1 ;; esac; done
 
   case "${1:-}" in
     --uninstall)
-      for rc in "${targets[@]}"; do strip_block "$rc"; done
-      echo "$(g '✓') cckimi / ccglm / ccor / ccart / ccskip / cxskip removed from: ${targets[*]}"
+      for rc in "${targets[@]}"; do strip_block "$rc"; purge_deprecated "$rc"; done
+      echo "$(g '✓') launchers removed from: ${targets[*]}"
       echo "note: the cached token/model files (~/.kimi_token, ~/.zai_token, ~/.openrouter_token,"
       echo "      ~/.agentrouter_token and the matching *_model files) were left untouched,"
       echo "      and Claude Code itself is not uninstalled."
       exit 10 ;;
-    -h|--help)
-      echo "usage: install.sh [--uninstall] [--yes]"; exit 11 ;;
   esac
 
-  # These launchers run Claude Code with --dangerously-skip-permissions. Confirm once, at install.
-  if [ "$assume_yes" != 1 ]; then
-    printf '\n\033[33m⚠  DANGEROUS MODE\033[0m — cckimi / ccglm / ccor / ccart / ccskip / cxskip run Claude Code\n' >&2
-    printf '   \033[1m--dangerously-skip-permissions\033[0m: it runs commands and edits files WITHOUT asking.\n' >&2
-    printf '   Use only in directories you trust.\n' >&2
-    if [ -r /dev/tty ]; then
-      printf '   Install these launchers anyway? [y/N] ' >&2
-      read -r __ans < /dev/tty || __ans=""
-      case "$__ans" in y|Y|yes|YES|Yes) ;; *) printf '   aborted — nothing was changed.\n' >&2; exit 20 ;; esac
-    else
-      printf '   no terminal to confirm; re-run with --yes (or CC_ASSUME_YES=1) to proceed.\n' >&2
+  # What is already there, and what is stale?
+  installed_keys=""; dep_found=""
+  for key in $CC_KEYS; do
+    first_cmd="${key}"
+    present "$first_cmd" && installed_keys="$installed_keys $key"
+  done
+  for name in $CC_DEPRECATED; do
+    present "$name" && dep_found="$dep_found $name"
+  done
+
+  # Pick the launchers: interactive unless --yes or there is no terminal.
+  if [ "$assume_yes" = 1 ] || [ ! -r /dev/tty ]; then
+    chosen="$CC_KEYS"
+  else
+    menu=""
+    for key in $CC_KEYS; do
+      mark=""
+      case " $installed_keys " in *" $key "*) mark="installed" ;; esac
+      menu="$menu$key|$(__cc_label "$key")|$mark
+"
+    done
+    chosen="$(printf '%s' "$menu" | bash -c "$CC_TUI")"
+    if [ "$chosen" = "__CANCEL__" ]; then
+      printf '\ncancelled — nothing was changed.\n' >&2
       exit 20
     fi
   fi
 
+  # Summary + confirm/cancel.
+  if [ "$assume_yes" != 1 ] && [ -r /dev/tty ]; then
+    over=""
+    for key in $chosen; do case " $installed_keys " in *" $key "*) over="$over $key" ;; esac; done
+    printf '\n  %s\n' "$(b 'Review')"
+    if [ -n "$chosen" ]; then
+      printf '    install    :'
+      for key in $chosen; do printf ' %s' "$key"; done
+      printf '\n'
+      for key in $chosen; do printf '                 %s\n' "$(__cc_cmds "$key")"; done
+    else
+      printf '    install    : (nothing selected — the block will be removed)\n'
+    fi
+    [ -n "$over" ]      && printf '    overwrite  : %s  %s\n' "$(y "${over# }")" "(already installed)"
+    [ -n "$dep_found" ] && printf '    remove     : %s  %s\n' "$(y "${dep_found# }")" "(deprecated)"
+    printf '\n    these launchers run Claude Code with \033[1m--dangerously-skip-permissions\033[0m —\n'
+    printf '    it runs commands and edits files WITHOUT asking. Use only in trusted directories.\n'
+    printf '\n      1) Confirm\n      2) Cancel\n'
+    printf '    choice [1/2]: '
+    read -r ans < /dev/tty || ans=2
+    case "$ans" in
+      1|y|Y|yes|YES|Yes) ;;
+      *) printf '    cancelled — nothing was changed.\n'; exit 20 ;;
+    esac
+  fi
+
+  # Assemble the rc block out of the chosen parts only.
+  need_token=0; need_pick=0
+  for key in $chosen; do
+    case "$key" in cckimi|ccglm|ccort|ccart) need_token=1 ;; esac
+    case "$key" in ccort|ccart) need_pick=1 ;; esac
+  done
+  all_cmds=""
+  for key in $CC_KEYS; do all_cmds="$all_cmds $(__cc_cmds "$key")"; done
+
+  block="$(
+    printf '# BEGIN cc-backends\n'
+    printf '# Neutralize any pre-existing aliases of these names first: an alias of the same name\n'
+    printf '# would break the function definitions below and shadow them at call time.\n'
+    printf 'unalias%s 2>/dev/null || true\n\n' "$all_cmds"
+    __cc_part __path
+    for key in $chosen; do printf '\n'; __cc_part "$key"; done
+    if [ "$need_token" = 1 ]; then printf '\n'; __cc_part __set_token; fi
+    if [ "$need_pick" = 1 ]; then printf '\n'; __cc_part __pick_model; fi
+    printf '# END cc-backends\n'
+  )"
+
   for rc in "${targets[@]}"; do
     strip_block "$rc"                    # idempotent: drop any previous block first
-    printf '\n%s\n' "$CC_BACKENDS_BLOCK" >> "$rc"
+    purge_deprecated "$rc"               # stale commands go without asking
+    if [ -n "$chosen" ]; then printf '\n%s\n' "$block" >> "$rc"; fi
   done
+  printf '%s\n' "$block" > "$CC_TMP_BLOCK" 2>/dev/null || true
 
-  # Claude Code itself — every launcher shells out to it, so install it when it is missing.
-  # Both install dirs are put on PATH for THIS run too; the rc block does the same per shell.
+  # Claude Code itself — every launcher shells out to it, so install it when missing.
   add_claude_bins_to_path() {
     local d
     for d in "$HOME/.local/bin" "$HOME/.claude/bin"; do
@@ -402,7 +589,7 @@ __cc_backends_run() (
     hash -r 2>/dev/null || true
   }
   add_claude_bins_to_path
-  if ! command -v claude >/dev/null 2>&1; then
+  if [ -n "$chosen" ] && ! command -v claude >/dev/null 2>&1; then
     echo
     echo "claude not found — installing Claude Code…"
     if ! curl -fsSL https://claude.ai/install.sh | bash; then
@@ -415,18 +602,27 @@ __cc_backends_run() (
   fi
 
   echo
+  if [ -z "$chosen" ]; then
+    echo "$(g '✓') nothing selected — the cc-backends block was removed from: ${targets[*]}"
+    exit 0
+  fi
   echo "$(g '✓') claude-code-backends installed → ${targets[*]}"
   echo
-  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)"
-  echo "          $(b ccor) (+ccor-token, ccor-model)   $(b ccart) (+ccart-token, ccart-model)"
-  echo "          $(b ccskip)   $(b cxskip)"
+  echo "installed:"
+  for key in $chosen; do echo "  $(b "$(__cc_cmds "$key")")"; done
+  if [ -n "$dep_found" ]; then
+    echo
+    echo "removed (deprecated): ${dep_found# }"
+  fi
   echo
   echo "first run of a backend launcher asks for its API key and caches it in ~/.kimi_token /"
   echo "~/.zai_token / ~/.openrouter_token / ~/.agentrouter_token (chmod 600); update later with"
-  echo "cckimi-token / ccglm-token / ccor-token / ccart-token."
-  echo
-  echo "$(b ccor) defaults to the free stealth/ox-alpha model, $(b ccart) to claude-opus-5."
-  echo "run $(b ccor-model) / $(b ccart-model) with no argument to pick another from a numbered list."
+  echo "the matching *-token command."
+  case " $chosen " in *" ccort "*|*" ccart "*)
+    echo
+    echo "$(b ccort) defaults to the free stealth/ox-alpha model, $(b ccart) to claude-opus-5."
+    echo "run $(b ccort-model) / $(b ccart-model) with no argument to pick another from a list." ;;
+  esac
   echo
   if command -v claude >/dev/null 2>&1; then
     echo "$(g '✓') Claude Code: $(command -v claude)"
@@ -445,23 +641,24 @@ __cc_interactive=0
 case "$-" in *i*) __cc_interactive=1 ;; esac
 
 if [ "$__cc_rc" -eq 0 ]; then
-  if [ "$__cc_interactive" -eq 1 ]; then
-    eval "$CC_BACKENDS_BLOCK"            # load into the CURRENT shell — ready immediately
-    printf '\n\033[32m✓\033[0m loaded into this shell — \033[1mcckimi\033[0m / \033[1mccglm\033[0m / \033[1mccor\033[0m / \033[1mccart\033[0m / \033[1mccskip\033[0m / \033[1mcxskip\033[0m are ready now.\n\n'
-  else
+  if [ "$__cc_interactive" -eq 1 ] && [ -r "$CC_TMP_BLOCK" ]; then
+    eval "$(cat "$CC_TMP_BLOCK")"        # load into the CURRENT shell — ready immediately
+    printf '\n\033[32m✓\033[0m loaded into this shell — ready to use now.\n\n'
+  elif [ "$__cc_interactive" -eq 0 ]; then
     printf '\nreload your shell to use them now:\n'
     printf '  source ~/.bashrc            # or ~/.zshrc, or just open a new terminal\n'
     printf 'tip: install with  \033[1msource <(curl -fsSL …/install.sh)\033[0m  to load them into the current shell in one step.\n\n'
   fi
 elif [ "$__cc_rc" -eq 10 ] && [ "$__cc_interactive" -eq 1 ]; then
-  unset -f cckimi ccglm ccor ccart cckimi-token ccglm-token ccor-token ccor-model \
+  unset -f cckimi ccglm ccort ccart cckimi-token ccglm-token ccort-token ccort-model \
            ccart-token ccart-model __cc_set_token __cc_pick_model 2>/dev/null || true
   printf '\033[32m✓\033[0m also removed from this shell.\n'
 fi
+rm -f "$CC_TMP_BLOCK" 2>/dev/null || true
 
 # Reflect the outcome as $? WITHOUT ever calling exit/return (either would kill a sourced
-# shell): 0/10/11 are success, anything else is a real error to propagate to curl|bash callers.
+# shell): 0/10/11/20 are expected outcomes, anything else is a real error.
 case "$__cc_rc" in
-  0|10|11) ( exit 0 ) ;;
-  *)       ( exit "$__cc_rc" ) ;;
+  0|10|11|20) ( exit 0 ) ;;
+  *)          ( exit "$__cc_rc" ) ;;
 esac

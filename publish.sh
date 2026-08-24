@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 GIST_ID="2b903923ea111f741ca50a878ee9d2f8"
-DESC="claude-code-backends — one-line installers (Linux/macOS + Windows) for the Kimi, Z.AI GLM & OpenRouter Claude Code backend launchers (cckimi/ccglm/ccor), installing Claude Code itself when missing"
+DESC="claude-code-backends — one-line installers (Linux/macOS + Windows) for the Kimi, Z.AI GLM, OpenRouter & AgentRouter Claude Code backend launchers (cckimi/ccglm/ccort/ccart), installing Claude Code itself when missing"
 
 # Stamp the real gist id into the self-reference URLs (idempotent once replaced).
 if [ -n "$GIST_ID" ] && [ "$GIST_ID" != "__GIST_ID__" ]; then
