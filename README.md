@@ -8,7 +8,7 @@ launchers for your **normal Anthropic login** (Opus 5).
 **Claude Code itself is installed for you** when it is missing, and the directories its installer uses
 are added to PATH — so a fresh machine goes from nothing to a working launcher in one command.
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 ## ✨ What you get
 
@@ -18,8 +18,9 @@ are added to PATH — so a fresh machine goes from nothing to a working launcher
 | `cckimi-token` | Set/update the cached Kimi key. |
 | `ccglm` | Runs **Claude Code on the Z.AI GLM backend**. First run asks for your Z.AI key and caches it. |
 | `ccglm-token` | Set/update the cached Z.AI key. |
-| `ccor` | Runs **Claude Code on the OpenRouter gateway** — any model OpenRouter serves. First run asks for your OpenRouter key and caches it. **Ships with no model set — you fill one in** (see [Models per tier](#-models-per-tier)). |
+| `ccor` | Runs **Claude Code on the OpenRouter gateway** — any model OpenRouter serves. First run asks for your OpenRouter key and caches it. Defaults to `stealth/ox-alpha` until you pick another. |
 | `ccor-token` | Set/update the cached OpenRouter key. |
+| `ccor-model` | Set/update the model `ccor` runs on (cached in `~/.openrouter_model`). |
 | `ccskip` | Runs Claude Code on your **normal Anthropic login** (no backend token) — permissions skipped, effort max, pinned to the latest **Opus 5**. |
 | `cxskip` | Same as `ccskip` — an alternate name, also **Opus 5**. |
 
@@ -84,6 +85,7 @@ Uninstalling removes the launchers only — your cached token files are left unt
   it is **not** read from an `OPENROUTER_API_KEY` environment variable.
 - Nothing is committed or transmitted anywhere except the backend you call.
 - Rotate a key any time with `cckimi-token` / `ccglm-token` / `ccor-token` (or pass it as the first argument).
+- The `ccor` model id is **not** a secret and lives beside them in `~/.openrouter_model` — set it with `ccor-model`.
 - All launchers run Claude Code with `--dangerously-skip-permissions` (Claude runs commands and edits
   files **without asking**). The **installer** warns and asks you to confirm once before installing —
   pass `--yes` on Linux/macOS (`… | bash -s -- --yes`) or `-Yes` on Windows to skip that prompt in
@@ -96,11 +98,11 @@ and the subagents get the flagship, while the lighter/background tiers get a che
 
 | Claude tier | `cckimi` (Kimi) | `ccglm` (Z.AI GLM) | `ccor` (OpenRouter) |
 |-------------|-----------------|--------------------|---------------------|
-| main / Opus | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) | *(blank — you fill it in)* |
-| Sonnet | `kimi-k2.7-code` | `glm-4.6` | *(blank → falls back to main)* |
-| Haiku *(background: summaries, titles)* | `kimi-k2.7-code` | `glm-4.5-air` | *(blank → falls back to main)* |
-| Fable *(fast tier)* | `kimi-k2.7-code-highspeed` | `glm-4.7-flashx` | *(blank → falls back to main)* |
-| subagents | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) | *(blank → falls back to main)* |
+| main / Opus | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) | whatever `ccor-model` is set to |
+| Sonnet | `kimi-k2.7-code` | `glm-4.6` | *(follows main)* |
+| Haiku *(background: summaries, titles)* | `kimi-k2.7-code` | `glm-4.5-air` | *(follows main)* |
+| Fable *(fast tier)* | `kimi-k2.7-code-highspeed` | `glm-4.7-flashx` | *(follows main)* |
+| subagents | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) | *(follows main)* |
 
 For `cckimi` / `ccglm`, to use a different model for a tier edit the matching `ANTHROPIC_DEFAULT_*_MODEL`
 (or `CLAUDE_CODE_SUBAGENT_MODEL`) line in the launcher block written to your rc file — model IDs come
@@ -109,26 +111,33 @@ on your plan; if a model is rejected, swap it for one your subscription includes
 
 ### `ccor` — pick your own model
 
-OpenRouter is a gateway to hundreds of models, so `ccor` intentionally ships with **every model slot
-empty** and refuses to start until you fill one in. Model ids come from
-[openrouter.ai/models](https://openrouter.ai/models) — either a pinned id (`anthropic/claude-opus-4.5`,
-`x-ai/grok-4`) or the tilde "latest" form (`~anthropic/claude-opus-latest`).
-
-**Linux/macOS** — open `~/.bashrc` (or `~/.zshrc`), find the `ccor()` block and edit these lines:
+OpenRouter is a gateway to hundreds of models, so `ccor` lets you swap the model without touching any
+script — just run **`ccor-model`**:
 
 ```bash
-local or_model=""            # main + Opus tier   <- required
-local or_sonnet_model=""     # Sonnet tier
-local or_haiku_model=""      # Haiku tier -- background work (summaries, titles)
-local or_fable_model=""      # Fable tier -- fast
-local or_subagent_model=""   # subagents
+ccor-model                       # prompts for an id
+ccor-model x-ai/grok-4.20        # or pass it straight in
 ```
 
-**Windows** — open `%USERPROFILE%\apps\aliases\ccor.cmd` and edit the matching
-`set "OR_MODEL="` / `set "OR_SONNET_MODEL="` / … lines.
+The id is cached in `~/.openrouter_model` (`%USERPROFILE%\.openrouter_model` on Windows) and every
+later `ccor` run picks it up. Browse ids at [openrouter.ai/models](https://openrouter.ai/models) —
+either a pinned id (`anthropic/claude-opus-4.8`, `x-ai/grok-4.20`) or the tilde "latest" form
+(`~anthropic/claude-opus-latest`).
 
-Only the main model is required: any tier you leave blank falls back to it, so a single id is enough
-to get going. Set a cheaper model for Haiku/Fable if you want the background work to cost less.
+**Until you set one, `ccor` falls back to `stealth/ox-alpha`** — a 1M-context reasoning model built
+for coding and sustained agentic work, currently free on OpenRouter. It prints a one-line notice each
+run so you know the fallback is in play.
+
+The model resolves in this order, first hit wins:
+
+1. a tier pinned inside the launcher itself (see below),
+2. `~/.openrouter_model` — what `ccor-model` writes,
+3. the built-in `stealth/ox-alpha` default.
+
+Per-tier pinning is still there if you want cheaper background work: on **Linux/macOS** open the
+`ccor()` block in your rc file, on **Windows** open `%USERPROFILE%\apps\aliases\ccor.cmd`, and fill in
+the tier you care about — e.g. `or_haiku_model="z-ai/glm-4.7-flash"` (`set "OR_HAIKU_MODEL=…"` on
+Windows). Any tier left blank follows the main model.
 
 `ccor` also blanks `ANTHROPIC_API_KEY` — Claude Code would otherwise send it as `x-api-key`, which
 OpenRouter treats as a direct-Anthropic credential and the request fails to authenticate. See the

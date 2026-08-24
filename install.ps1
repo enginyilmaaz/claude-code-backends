@@ -8,7 +8,7 @@
   from ANY shell (cmd, PowerShell, Run):
     cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
     ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
-    ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token)
+    ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token, ccor-model)
   Env vars are scoped via setlocal to each .cmd process, so they never leak into the caller.
   Claude Code itself is installed when missing, and its bin dirs are added to the User PATH.
 
@@ -21,7 +21,7 @@ param([switch]$Uninstall, [switch]$Yes)
 
 $ErrorActionPreference = 'Stop'
 $aliasDir = Join-Path $env:USERPROFILE 'apps\aliases'
-$names = @('cckimi','ccglm','ccor','cckimi-token','ccglm-token','ccor-token','ccskip','cxskip')
+$names = @('cckimi','ccglm','ccor','cckimi-token','ccglm-token','ccor-token','ccor-model','ccskip','cxskip')
 # Where the Claude Code installers put the binary - both go on PATH so 'claude' always resolves.
 $claudeBinDirs = @((Join-Path $env:USERPROFILE '.local\bin'), (Join-Path $env:USERPROFILE '.claude\bin'))
 
@@ -173,6 +173,7 @@ $cmds['ccor'] = @'
 @echo off
 setlocal
 set "TOKENFILE=%USERPROFILE%\.openrouter_token"
+set "MODELFILE=%USERPROFILE%\.openrouter_model"
 set "token="
 if exist "%TOKENFILE%" set /p token=<"%TOKENFILE%"
 if not "%token%"=="" goto :run
@@ -185,21 +186,21 @@ if "%token%"=="" (
 icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
 echo ccor: key saved to %TOKENFILE% (current-user only).
 :run
-rem ---- OpenRouter models: intentionally LEFT EMPTY -- fill them in yourself -------
-rem Model ids come from https://openrouter.ai/models, e.g. anthropic/claude-opus-4.5
-rem or the tilde "latest" form ~anthropic/claude-opus-latest. Only OR_MODEL is
-rem required; every tier left blank falls back to it.
+rem ---- Models: leave these EMPTY to follow ccor-model / the default below ----------
+rem Fill one in only to pin that tier here, e.g. set "OR_HAIKU_MODEL=z-ai/glm-4.7-flash".
+rem Model ids come from https://openrouter.ai/models
 set "OR_MODEL="
 set "OR_SONNET_MODEL="
 set "OR_HAIKU_MODEL="
 set "OR_FABLE_MODEL="
 set "OR_SUBAGENT_MODEL="
-rem --------------------------------------------------------------------------------
+set "OR_DEFAULT_MODEL=stealth/ox-alpha"
+rem ---------------------------------------------------------------------------------
+rem Resolution order for the main model: pinned above -> .openrouter_model -> default.
+if "%OR_MODEL%"=="" if exist "%MODELFILE%" set /p OR_MODEL=<"%MODELFILE%"
 if "%OR_MODEL%"=="" (
-    echo ccor: no model set yet. Edit "%USERPROFILE%\apps\aliases\ccor.cmd" and fill in
-    echo       OR_MODEL= with an OpenRouter model id -- pick one at
-    echo       https://openrouter.ai/models
-    exit /b 1
+    set "OR_MODEL=%OR_DEFAULT_MODEL%"
+    echo ccor: no model set, falling back to %OR_DEFAULT_MODEL% -- change it with: ccor-model your/model-id
 )
 if "%OR_SONNET_MODEL%"=="" set "OR_SONNET_MODEL=%OR_MODEL%"
 if "%OR_HAIKU_MODEL%"=="" set "OR_HAIKU_MODEL=%OR_MODEL%"
@@ -263,6 +264,19 @@ if "%key%"=="" (
 icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
 echo ccor-token: key written to %TOKENFILE% (current-user only).
 '@
+$cmds['ccor-model'] = @'
+@echo off
+setlocal
+set "MODELFILE=%USERPROFILE%\.openrouter_model"
+set "id=%~1"
+if "%id%"=="" set /p id=ccor-model - paste an OpenRouter model id, browse https://openrouter.ai/models :
+if "%id%"=="" (
+    echo ccor-model: no id given.
+    exit /b 1
+)
+>"%MODELFILE%" echo %id%
+echo ccor-model: model set to %id% (%MODELFILE%).
+'@
 
 foreach ($name in $cmds.Keys) {
     # force CRLF + ASCII (no BOM) so cmd.exe handles labels/goto correctly
@@ -280,7 +294,7 @@ $claudeOk = Install-ClaudeCode
 Write-Host ""
 Write-Host "OK  claude-code-backends installed -> $aliasDir (added to PATH)" -ForegroundColor Green
 Write-Host ""
-Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)   ccor (+ccor-token)   ccskip   cxskip"
+Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)   ccor (+ccor-token, ccor-model)   ccskip   cxskip"
 Write-Host ""
 Write-Host "Ready in THIS PowerShell session now (the alias folder was added to the current PATH)." -ForegroundColor Green
 Write-Host "Open a new window only for cmd.exe / other shells to pick up the persisted PATH."
@@ -288,8 +302,8 @@ Write-Host "First run of cckimi/ccglm/ccor asks for the backend API key and cach
 Write-Host "%USERPROFILE%\.kimi_token / .zai_token / .openrouter_token; update later with"
 Write-Host "cckimi-token / ccglm-token / ccor-token."
 Write-Host ""
-Write-Host "ccor ships with NO model set - open $aliasDir\ccor.cmd and fill in OR_MODEL= with" -ForegroundColor Yellow
-Write-Host "an OpenRouter model id from https://openrouter.ai/models"
+Write-Host "ccor defaults to the free stealth/ox-alpha model (1M ctx, built for coding)." -ForegroundColor Yellow
+Write-Host "Pick another any time with:  ccor-model <id>   - browse https://openrouter.ai/models"
 Write-Host ""
 if ($claudeOk) {
     Write-Host "OK  Claude Code: $((Get-Command claude).Source)" -ForegroundColor Green

@@ -5,7 +5,7 @@
 # Adds three Claude Code backend launchers to your rc file (~/.bashrc and ~/.zshrc if present):
 #   cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
 #   ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
-#   ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token)
+#   ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token, ccor-model)
 #
 # Claude Code itself is installed automatically when it is missing, and the directories its
 # installer uses (~/.local/bin, ~/.claude/bin) are added to PATH by the rc block.
@@ -29,7 +29,7 @@ CC_BACKENDS_BLOCK=$(cat <<'CC_BACKENDS_EOF'
 # BEGIN cc-backends
 # Neutralize any pre-existing aliases of these names first: an alias of the same name would
 # both break the function definition below (parse error on '(') and shadow it at call time.
-unalias cckimi ccglm ccor ccskip cxskip cckimi-token ccglm-token ccor-token 2>/dev/null || true
+unalias cckimi ccglm ccor ccskip cxskip cckimi-token ccglm-token ccor-token ccor-model 2>/dev/null || true
 
 # Claude Code's native installer drops its binary in ~/.local/bin (or ~/.claude/bin). Put both
 # on PATH so `command claude` below resolves even in a shell that predates the install.
@@ -113,8 +113,10 @@ ccglm() {
 ccglm-token() { __cc_set_token ccglm "$HOME/.zai_token" "$1"; }
 
 # ccor -> runs Claude Code on the OpenRouter gateway (key lives in ~/.openrouter_token, chmod 600)
+# The model id lives in ~/.openrouter_model -- set or change it with: ccor-model <id>
 ccor() {
     local token_file="$HOME/.openrouter_token"
+    local model_file="$HOME/.openrouter_model"
     local token
     token="$([ -r "$token_file" ] && tr -d '[:space:]' < "$token_file")"
     if [ -z "$token" ]; then
@@ -130,21 +132,23 @@ ccor() {
         printf 'ccor: key saved to %s (mode 600).\n' "$token_file" >&2
     fi
 
-    # ---- OpenRouter models: intentionally LEFT EMPTY -- fill them in yourself -------
-    # Model ids come from https://openrouter.ai/models, e.g. "anthropic/claude-opus-4.5"
-    # or the tilde "latest" form "~anthropic/claude-opus-latest". Only or_model is
-    # required; every tier left blank falls back to it.
+    # ---- Models: leave these EMPTY to follow `ccor-model` / the default below --------
+    # Fill a line in only to pin that tier here, e.g. or_haiku_model="z-ai/glm-4.7-flash".
+    # Model ids come from https://openrouter.ai/models
     local or_model=""            # main + Opus tier
     local or_sonnet_model=""     # Sonnet tier
     local or_haiku_model=""      # Haiku tier -- background work (summaries, titles)
     local or_fable_model=""      # Fable tier -- fast
     local or_subagent_model=""   # subagents
-    # --------------------------------------------------------------------------------
+    local or_default_model="stealth/ox-alpha"   # used when nothing else is set
+    # ---------------------------------------------------------------------------------
+    # Resolution order for the main model: pinned above -> ~/.openrouter_model -> default.
+    if [ -z "$or_model" ] && [ -r "$model_file" ]; then
+        or_model="$(tr -d '[:space:]' < "$model_file")"
+    fi
     if [ -z "$or_model" ]; then
-        printf 'ccor: no model set yet. Edit the ccor() block in your rc file (~/.bashrc or\n' >&2
-        printf '      ~/.zshrc) and fill in or_model= with an OpenRouter model id -- pick one at\n' >&2
-        printf '      https://openrouter.ai/models\n' >&2
-        return 1
+        or_model="$or_default_model"
+        printf 'ccor: no model set, falling back to %s -- change it with: ccor-model <id>\n' "$or_model" >&2
     fi
     : "${or_sonnet_model:=$or_model}"
     : "${or_haiku_model:=$or_model}"
@@ -169,6 +173,22 @@ ccor() {
 }
 
 ccor-token() { __cc_set_token ccor "$HOME/.openrouter_token" "$1"; }
+
+# ccor-model [id] -- set the OpenRouter model ccor runs on (kept in ~/.openrouter_model)
+ccor-model() {
+    local model_file="$HOME/.openrouter_model" id="$1"
+    if [ -z "$id" ]; then
+        printf 'ccor-model - paste an OpenRouter model id (browse https://openrouter.ai/models): ' >&2
+        IFS= read -r id < /dev/tty
+    fi
+    id="$(printf '%s' "$id" | tr -d '[:space:]')"
+    if [ -z "$id" ]; then
+        printf 'ccor-model: no id given, %s left unchanged\n' "$model_file" >&2
+        return 1
+    fi
+    printf '%s\n' "$id" > "$model_file" || return 1
+    printf 'ccor-model: model set to %s (%s). Verify with: ccor -p "ok"\n' "$id" "$model_file" >&2
+}
 
 # __cc_set_token <label> <token_file> [key] -- shared writer for the cc*-token helpers
 __cc_set_token() {
@@ -272,14 +292,14 @@ __cc_backends_run() (
   echo
   echo "$(g '✓') claude-code-backends installed → ${targets[*]}"
   echo
-  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)   $(b ccor) (+ccor-token)   $(b ccskip)   $(b cxskip)"
+  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)   $(b ccor) (+ccor-token, ccor-model)   $(b ccskip)   $(b cxskip)"
   echo
   echo "first run of $(b cckimi)/$(b ccglm)/$(b ccor) asks for the backend API key and caches it in"
   echo "~/.kimi_token / ~/.zai_token / ~/.openrouter_token (chmod 600); update later with"
   echo "cckimi-token / ccglm-token / ccor-token."
   echo
-  echo "$(b ccor) ships with NO model set — open your rc file, find the ccor() block and fill in"
-  echo "or_model= with an OpenRouter model id from https://openrouter.ai/models"
+  echo "$(b ccor) defaults to the free stealth/ox-alpha model (1M ctx, built for coding)."
+  echo "pick another any time with: $(b ccor-model) <id>   — browse https://openrouter.ai/models"
   echo
   if command -v claude >/dev/null 2>&1; then
     echo "$(g '✓') Claude Code: $(command -v claude)"
@@ -307,7 +327,7 @@ if [ "$__cc_rc" -eq 0 ]; then
     printf 'tip: install with  \033[1msource <(curl -fsSL …/install.sh)\033[0m  to load them into the current shell in one step.\n\n'
   fi
 elif [ "$__cc_rc" -eq 10 ] && [ "$__cc_interactive" -eq 1 ]; then
-  unset -f cckimi ccglm ccor cckimi-token ccglm-token ccor-token __cc_set_token 2>/dev/null || true
+  unset -f cckimi ccglm ccor cckimi-token ccglm-token ccor-token ccor-model __cc_set_token 2>/dev/null || true
   printf '\033[32m✓\033[0m also removed from this shell.\n'
 fi
 
