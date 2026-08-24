@@ -1,14 +1,14 @@
 # claude-code-backends
 
-One-line installers — **Linux/macOS and Windows** — for three Claude Code **backend launchers**:
-run Claude Code against the **Kimi (Moonshot)**, **Z.AI GLM** or **OpenRouter** backend with a single
-command, with per-user token caching. Plus `ccskip` / `cxskip` — quick `--dangerously-skip-permissions`
+One-line installers — **Linux/macOS and Windows** — for four Claude Code **backend launchers**:
+run Claude Code against the **Kimi (Moonshot)**, **Z.AI GLM**, **OpenRouter** or **AgentRouter**
+backend with a single command, with per-user token caching. Plus `ccskip` / `cxskip` — quick `--dangerously-skip-permissions`
 launchers for your **normal Anthropic login** (Opus 5).
 
 **Claude Code itself is installed for you** when it is missing, and the directories its installer uses
 are added to PATH — so a fresh machine goes from nothing to a working launcher in one command.
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 
 ## ✨ What you get
 
@@ -20,11 +20,14 @@ are added to PATH — so a fresh machine goes from nothing to a working launcher
 | `ccglm-token` | Set/update the cached Z.AI key. |
 | `ccor` | Runs **Claude Code on the OpenRouter gateway** — any model OpenRouter serves. First run asks for your OpenRouter key and caches it. Defaults to `stealth/ox-alpha` until you pick another. |
 | `ccor-token` | Set/update the cached OpenRouter key. |
-| `ccor-model` | Set/update the model `ccor` runs on (cached in `~/.openrouter_model`). |
+| `ccor-model` | Pick the model `ccor` runs on from a numbered list (cached in `~/.openrouter_model`). |
+| `ccart` | Runs **Claude Code on the AgentRouter gateway** — a free AI-coding service. First run asks for your AgentRouter key and caches it. Defaults to `claude-opus-5`. |
+| `ccart-token` | Set/update the cached AgentRouter key. |
+| `ccart-model` | Pick the model `ccart` runs on from a numbered list (cached in `~/.agentrouter_model`). |
 | `ccskip` | Runs Claude Code on your **normal Anthropic login** (no backend token) — permissions skipped, effort max, pinned to the latest **Opus 5**. |
 | `cxskip` | Same as `ccskip` — an alternate name, also **Opus 5**. |
 
-`cckimi`/`ccglm`/`ccor` just point Claude Code at a different `ANTHROPIC_BASE_URL` + model via scoped env
+All four just point Claude Code at a different `ANTHROPIC_BASE_URL` + model via scoped env
 vars — your normal `claude` login is untouched, and the backend env never leaks into your shell.
 
 ## 🚀 Quick install
@@ -79,13 +82,13 @@ Uninstalling removes the launchers only — your cached token files are left unt
 
 ## 🔐 Tokens & security
 
-- Keys are read once, then cached per-user: `~/.kimi_token` / `~/.zai_token` / `~/.openrouter_token` on
-  Linux/macOS (`chmod 600`), `%USERPROFILE%\.kimi_token` / `.zai_token` / `.openrouter_token` on Windows
-  (`icacls`, current-user only). The OpenRouter key is cached in that file like every other backend key —
-  it is **not** read from an `OPENROUTER_API_KEY` environment variable.
+- Keys are read once, then cached per-user: `~/.kimi_token`, `~/.zai_token`, `~/.openrouter_token`,
+  `~/.agentrouter_token` on Linux/macOS (`chmod 600`); the same names under `%USERPROFILE%\` on Windows
+  (`icacls`, current-user only). Gateway keys are cached in those files like every other backend key —
+  they are **not** read from `OPENROUTER_API_KEY` / `AGENTROUTER_API_KEY` environment variables.
 - Nothing is committed or transmitted anywhere except the backend you call.
-- Rotate a key any time with `cckimi-token` / `ccglm-token` / `ccor-token` (or pass it as the first argument).
-- The `ccor` model id is **not** a secret and lives beside them in `~/.openrouter_model` — set it with `ccor-model`.
+- Rotate a key any time with `cckimi-token` / `ccglm-token` / `ccor-token` / `ccart-token` (or pass it as the first argument).
+- Model ids are **not** secrets and live beside them in `~/.openrouter_model` / `~/.agentrouter_model` — set them with `ccor-model` / `ccart-model`.
 - All launchers run Claude Code with `--dangerously-skip-permissions` (Claude runs commands and edits
   files **without asking**). The **installer** warns and asks you to confirm once before installing —
   pass `--yes` on Linux/macOS (`… | bash -s -- --yes`) or `-Yes` on Windows to skip that prompt in
@@ -96,9 +99,9 @@ Uninstalling removes the launchers only — your cached token files are left unt
 Each launcher maps Claude Code's model tiers to a fitting backend model — the heavy tiers
 and the subagents get the flagship, while the lighter/background tiers get a cheaper model:
 
-| Claude tier | `cckimi` (Kimi) | `ccglm` (Z.AI GLM) | `ccor` (OpenRouter) |
+| Claude tier | `cckimi` (Kimi) | `ccglm` (Z.AI GLM) | `ccor` / `ccart` (gateways) |
 |-------------|-----------------|--------------------|---------------------|
-| main / Opus | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) | whatever `ccor-model` is set to |
+| main / Opus | `kimi-k3` (1M ctx) | `glm-5.3` (1M ctx) | whatever `ccor-model` / `ccart-model` is set to |
 | Sonnet | `kimi-k2.7-code` | `glm-4.6` | *(follows main)* |
 | Haiku *(background: summaries, titles)* | `kimi-k2.7-code` | `glm-4.5-air` | *(follows main)* |
 | Fable *(fast tier)* | `kimi-k2.7-code-highspeed` | `glm-4.7-flashx` | *(follows main)* |
@@ -109,39 +112,60 @@ For `cckimi` / `ccglm`, to use a different model for a tier edit the matching `A
 from [Kimi](https://platform.kimi.ai/docs/models) / [Z.AI](https://docs.z.ai). Availability depends
 on your plan; if a model is rejected, swap it for one your subscription includes.
 
-### `ccor` — pick your own model
+### `ccor` / `ccart` — pick a model from a list
 
-OpenRouter is a gateway to hundreds of models, so `ccor` lets you swap the model without touching any
-script — just run **`ccor-model`**:
+Both gateways let you swap the model without editing any script. Run the setter with **no argument**
+and you get a numbered picker; the current choice is marked:
 
-```bash
-ccor-model                       # prompts for an id
-ccor-model x-ai/grok-4.20        # or pass it straight in
+```
+$ ccart-model
+ccart-model - pick a model:
+   1. claude-opus-5   [current]
+   2. claude-opus-4-8
+   3. gpt-5.6-sol
+   4. deepseek-v4f
+    0. type a different id by hand
+choice [1-4, 0]:
 ```
 
-The id is cached in `~/.openrouter_model` (`%USERPROFILE%\.openrouter_model` on Windows) and every
-later `ccor` run picks it up. Browse ids at [openrouter.ai/models](https://openrouter.ai/models) —
-either a pinned id (`anthropic/claude-opus-4.8`, `x-ai/grok-4.20`) or the tilde "latest" form
-(`~anthropic/claude-opus-latest`).
+Or pass an id straight in when you already know it:
 
-**Until you set one, `ccor` falls back to `stealth/ox-alpha`** — a 1M-context reasoning model built
-for coding and sustained agentic work, currently free on OpenRouter. It prints a one-line notice each
-run so you know the fallback is in play.
+```bash
+ccor-model x-ai/grok-4.20
+ccart-model gpt-5.6-sol
+```
+
+The choice is cached in `~/.openrouter_model` / `~/.agentrouter_model` (same names under
+`%USERPROFILE%\` on Windows) and every later run picks it up.
+
+**Defaults, until you pick something:**
+
+| | default | why |
+|---|---|---|
+| `ccor` | `stealth/ox-alpha` | 1M-context reasoning model built for coding and sustained agentic work — currently **free** on OpenRouter |
+| `ccart` | `claude-opus-5` | the strongest Claude on AgentRouter's catalogue |
+
+Each prints a one-line notice while the fallback is in play, so you always know what you are running on.
+
+`ccor`'s picker is a shortlist — option `0` takes **any** id from
+[openrouter.ai/models](https://openrouter.ai/models), pinned (`anthropic/claude-opus-4.8`) or in the
+tilde "latest" form (`~anthropic/claude-opus-latest`). `ccart`'s list is AgentRouter's whole catalogue.
 
 The model resolves in this order, first hit wins:
 
 1. a tier pinned inside the launcher itself (see below),
-2. `~/.openrouter_model` — what `ccor-model` writes,
-3. the built-in `stealth/ox-alpha` default.
+2. `~/.openrouter_model` / `~/.agentrouter_model` — what the `*-model` setters write,
+3. the built-in default from the table above.
 
 Per-tier pinning is still there if you want cheaper background work: on **Linux/macOS** open the
-`ccor()` block in your rc file, on **Windows** open `%USERPROFILE%\apps\aliases\ccor.cmd`, and fill in
-the tier you care about — e.g. `or_haiku_model="z-ai/glm-4.7-flash"` (`set "OR_HAIKU_MODEL=…"` on
-Windows). Any tier left blank follows the main model.
+`ccor()` / `ccart()` block in your rc file, on **Windows** open `%USERPROFILE%\apps\aliases\ccor.cmd`
+(or `ccart.cmd`), and fill in the tier you care about — e.g. `or_haiku_model="z-ai/glm-4.7-flash"`
+(`set "OR_HAIKU_MODEL=…"` on Windows). Any tier left blank follows the main model.
 
-`ccor` also blanks `ANTHROPIC_API_KEY` — Claude Code would otherwise send it as `x-api-key`, which
-OpenRouter treats as a direct-Anthropic credential and the request fails to authenticate. See the
-[OpenRouter × Claude Code guide](https://openrouter.ai/docs/cookbook/coding-agents/claude-code-integration).
+Both also blank `ANTHROPIC_API_KEY` — Claude Code would otherwise send it as `x-api-key`, which
+the gateway treats as a direct-Anthropic credential and the request fails to authenticate. See the
+[OpenRouter × Claude Code guide](https://openrouter.ai/docs/cookbook/coding-agents/claude-code-integration)
+and the [AgentRouter × Claude Code guide](https://agentrouter.org/docs/claude-code.html).
 
 ## 🧠 How it works
 
@@ -165,7 +189,8 @@ OpenRouter treats as a direct-Anthropic credential and the request fails to auth
 - [Claude Code](https://claude.com/claude-code) — installed automatically if it is missing.
 - Linux/macOS: `bash` (zsh also supported), plus `curl`. Windows: PowerShell 5+.
 - A Kimi key (https://platform.moonshot.ai) for `cckimi`, a Z.AI key (https://z.ai/subscribe) for `ccglm`,
-  an OpenRouter key (https://openrouter.ai/keys) for `ccor`.
+  an OpenRouter key (https://openrouter.ai/keys) for `ccor`, an AgentRouter key
+  (https://agentrouter.org — free, register for one) for `ccart`.
 
 ## 🛠️ Maintainer
 

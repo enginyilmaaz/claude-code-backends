@@ -6,6 +6,7 @@
 #   cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
 #   ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
 #   ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token, ccor-model)
+#   ccart  -> run Claude Code on the AgentRouter gateway       (+ ccart-token, ccart-model)
 #
 # Claude Code itself is installed automatically when it is missing, and the directories its
 # installer uses (~/.local/bin, ~/.claude/bin) are added to PATH by the rc block.
@@ -19,7 +20,7 @@
 #
 # Safe to run either way. When EXECUTED (curl|bash, ./install.sh) it just writes the rc
 # block. When SOURCED from an interactive shell (source <(curl …)) it ALSO loads the
-# launchers into the running shell, so cckimi / ccglm / ccor work in the current terminal without
+# launchers into the running shell, so cckimi / ccglm / ccor / ccart work in the current terminal without
 # opening a new one — a child process (curl|bash) can never inject into the parent shell,
 # so sourcing is the only way to reach the terminal you are typing in.
 
@@ -29,7 +30,8 @@ CC_BACKENDS_BLOCK=$(cat <<'CC_BACKENDS_EOF'
 # BEGIN cc-backends
 # Neutralize any pre-existing aliases of these names first: an alias of the same name would
 # both break the function definition below (parse error on '(') and shadow it at call time.
-unalias cckimi ccglm ccor ccskip cxskip cckimi-token ccglm-token ccor-token ccor-model 2>/dev/null || true
+unalias cckimi ccglm ccor ccart ccskip cxskip cckimi-token ccglm-token ccor-token ccor-model \
+        ccart-token ccart-model 2>/dev/null || true
 
 # Claude Code's native installer drops its binary in ~/.local/bin (or ~/.claude/bin). Put both
 # on PATH so `command claude` below resolves even in a shell that predates the install.
@@ -174,20 +176,104 @@ ccor() {
 
 ccor-token() { __cc_set_token ccor "$HOME/.openrouter_token" "$1"; }
 
-# ccor-model [id] -- set the OpenRouter model ccor runs on (kept in ~/.openrouter_model)
+# ccor-model [id] -- set the model ccor runs on (kept in .openrouter_model).
+# With no argument it shows a numbered picker; option 0 takes any id from https://openrouter.ai/models
 ccor-model() {
     local model_file="$HOME/.openrouter_model" id="$1"
     if [ -z "$id" ]; then
-        printf 'ccor-model - paste an OpenRouter model id (browse https://openrouter.ai/models): ' >&2
-        IFS= read -r id < /dev/tty
+        __cc_pick_model ccor-model "$model_file" \
+        stealth/ox-alpha \
+        anthropic/claude-opus-4.8 \
+        anthropic/claude-sonnet-5 \
+        anthropic/claude-haiku-4.5 \
+        x-ai/grok-4.20 \
+        openai/gpt-5.6-sol \
+        google/gemini-3.1-pro-preview \
+        deepseek/deepseek-v4-pro \
+        moonshotai/kimi-k3 \
+        z-ai/glm-5
+        return
     fi
     id="$(printf '%s' "$id" | tr -d '[:space:]')"
-    if [ -z "$id" ]; then
-        printf 'ccor-model: no id given, %s left unchanged\n' "$model_file" >&2
-        return 1
-    fi
     printf '%s\n' "$id" > "$model_file" || return 1
-    printf 'ccor-model: model set to %s (%s). Verify with: ccor -p "ok"\n' "$id" "$model_file" >&2
+    printf 'ccor-model: model set to %s (%s)\n' "$id" "$model_file" >&2
+}
+
+# ccart -> runs Claude Code on the AgentRouter gateway (key lives in ~/.agentrouter_token, chmod 600)
+# The model id lives in ~/.agentrouter_model -- set or change it with: ccart-model <id>
+ccart() {
+    local token_file="$HOME/.agentrouter_token"
+    local model_file="$HOME/.agentrouter_model"
+    local token
+    token="$([ -r "$token_file" ] && tr -d '[:space:]' < "$token_file")"
+    if [ -z "$token" ]; then
+        printf 'ccart: no API key found. Enter your AgentRouter API key and press Enter: ' >&2
+        IFS= read -rs token < /dev/tty
+        printf '\n' >&2
+        token="$(printf '%s' "$token" | tr -d '[:space:]')"
+        if [ -z "$token" ]; then
+            printf 'ccart: no key entered, aborting.\n' >&2
+            return 1
+        fi
+        ( umask 177; printf '%s\n' "$token" > "$token_file" ) && chmod 600 "$token_file"
+        printf 'ccart: key saved to %s (mode 600).\n' "$token_file" >&2
+    fi
+
+    # ---- Models: leave these EMPTY to follow `ccart-model` / the default below -------
+    # AgentRouter serves a short list -- claude-opus-5, claude-opus-4-8, gpt-5.6-sol,
+    # deepseek-v4f. Fill a line in only to pin that tier here.
+    local ar_model=""            # main + Opus tier
+    local ar_sonnet_model=""     # Sonnet tier
+    local ar_haiku_model=""      # Haiku tier -- background work (summaries, titles)
+    local ar_fable_model=""      # Fable tier -- fast
+    local ar_subagent_model=""   # subagents
+    local ar_default_model="claude-opus-5"   # used when nothing else is set
+    # ---------------------------------------------------------------------------------
+    # Resolution order for the main model: pinned above -> ~/.agentrouter_model -> default.
+    if [ -z "$ar_model" ] && [ -r "$model_file" ]; then
+        ar_model="$(tr -d '[:space:]' < "$model_file")"
+    fi
+    if [ -z "$ar_model" ]; then
+        ar_model="$ar_default_model"
+        printf 'ccart: no model set, falling back to %s -- change it with: ccart-model <id>\n' "$ar_model" >&2
+    fi
+    : "${ar_sonnet_model:=$ar_model}"
+    : "${ar_haiku_model:=$ar_model}"
+    : "${ar_fable_model:=$ar_model}"
+    : "${ar_subagent_model:=$ar_model}"
+
+    # ANTHROPIC_API_KEY is blanked so the gateway only ever sees the Bearer token:
+    # Claude Code sends ANTHROPIC_API_KEY as x-api-key, a direct-Anthropic credential.
+    ANTHROPIC_BASE_URL="https://agentrouter.org" \
+    ANTHROPIC_AUTH_TOKEN="$token" \
+    ANTHROPIC_API_KEY="" \
+    ANTHROPIC_MODEL="$ar_model" \
+    ANTHROPIC_DEFAULT_OPUS_MODEL="$ar_model" \
+    ANTHROPIC_DEFAULT_SONNET_MODEL="$ar_sonnet_model" \
+    ANTHROPIC_DEFAULT_HAIKU_MODEL="$ar_haiku_model" \
+    ANTHROPIC_DEFAULT_FABLE_MODEL="$ar_fable_model" \
+    CLAUDE_CODE_SUBAGENT_MODEL="$ar_subagent_model" \
+    API_TIMEOUT_MS="3000000" \
+    command claude --dangerously-skip-permissions "$@"
+}
+
+ccart-token() { __cc_set_token ccart "$HOME/.agentrouter_token" "$1"; }
+
+# ccart-model [id] -- set the model ccart runs on (kept in .agentrouter_model).
+# With no argument it shows a numbered picker; the list is AgentRouter's full catalogue.
+ccart-model() {
+    local model_file="$HOME/.agentrouter_model" id="$1"
+    if [ -z "$id" ]; then
+        __cc_pick_model ccart-model "$model_file" \
+        claude-opus-5 \
+        claude-opus-4-8 \
+        gpt-5.6-sol \
+        deepseek-v4f
+        return
+    fi
+    id="$(printf '%s' "$id" | tr -d '[:space:]')"
+    printf '%s\n' "$id" > "$model_file" || return 1
+    printf 'ccart-model: model set to %s (%s)\n' "$id" "$model_file" >&2
 }
 
 # __cc_set_token <label> <token_file> [key] -- shared writer for the cc*-token helpers
@@ -206,6 +292,44 @@ __cc_set_token() {
     printf '%s: key written to %s (%d chars, mode %s). Verify with: %s -p "ok"\n' \
         "$label" "$token_file" "${#key}" \
         "$(stat -c '%a' "$token_file" 2>/dev/null || echo '600')" "$label"
+}
+
+# __cc_pick_model <label> <model_file> <id...> -- numbered picker shared by the cc*-model
+# helpers. Prints to stderr, reads from /dev/tty, writes the chosen id to <model_file>.
+__cc_pick_model() {
+    local label="$1" model_file="$2"; shift 2
+    local current="" m pick chosen="" n=1 total=0
+    [ -r "$model_file" ] && current="$(tr -d '[:space:]' < "$model_file")"
+    printf '%s - pick a model:\n' "$label" >&2
+    for m in "$@"; do
+        if [ "$m" = "$current" ]; then
+            printf '  %2d. %s   <- current\n' "$n" "$m" >&2
+        else
+            printf '  %2d. %s\n' "$n" "$m" >&2
+        fi
+        n=$((n + 1)); total=$((total + 1))
+    done
+    printf '   0. type a different id by hand\n' >&2
+    printf 'choice [1-%d, 0]: ' "$total" >&2
+    IFS= read -r pick < /dev/tty
+    pick="$(printf '%s' "$pick" | tr -d '[:space:]')"
+    if [ "$pick" = "0" ]; then
+        printf 'model id: ' >&2
+        IFS= read -r chosen < /dev/tty
+    else
+        n=1
+        for m in "$@"; do
+            [ "$pick" = "$n" ] && chosen="$m"
+            n=$((n + 1))
+        done
+    fi
+    chosen="$(printf '%s' "$chosen" | tr -d '[:space:]')"
+    if [ -z "$chosen" ]; then
+        printf '%s: nothing picked, %s left unchanged\n' "$label" "$model_file" >&2
+        return 1
+    fi
+    printf '%s\n' "$chosen" > "$model_file" || return 1
+    printf '%s: model set to %s (%s)\n' "$label" "$chosen" "$model_file" >&2
 }
 # END cc-backends
 CC_BACKENDS_EOF
@@ -237,8 +361,9 @@ __cc_backends_run() (
   case "${1:-}" in
     --uninstall)
       for rc in "${targets[@]}"; do strip_block "$rc"; done
-      echo "$(g '✓') cckimi / ccglm / ccor / ccskip / cxskip removed from: ${targets[*]}"
-      echo "note: token files ~/.kimi_token, ~/.zai_token and ~/.openrouter_token were left untouched,"
+      echo "$(g '✓') cckimi / ccglm / ccor / ccart / ccskip / cxskip removed from: ${targets[*]}"
+      echo "note: the cached token/model files (~/.kimi_token, ~/.zai_token, ~/.openrouter_token,"
+      echo "      ~/.agentrouter_token and the matching *_model files) were left untouched,"
       echo "      and Claude Code itself is not uninstalled."
       exit 10 ;;
     -h|--help)
@@ -247,7 +372,7 @@ __cc_backends_run() (
 
   # These launchers run Claude Code with --dangerously-skip-permissions. Confirm once, at install.
   if [ "$assume_yes" != 1 ]; then
-    printf '\n\033[33m⚠  DANGEROUS MODE\033[0m — cckimi / ccglm / ccor / ccskip / cxskip run Claude Code with\n' >&2
+    printf '\n\033[33m⚠  DANGEROUS MODE\033[0m — cckimi / ccglm / ccor / ccart / ccskip / cxskip run Claude Code\n' >&2
     printf '   \033[1m--dangerously-skip-permissions\033[0m: it runs commands and edits files WITHOUT asking.\n' >&2
     printf '   Use only in directories you trust.\n' >&2
     if [ -r /dev/tty ]; then
@@ -292,14 +417,16 @@ __cc_backends_run() (
   echo
   echo "$(g '✓') claude-code-backends installed → ${targets[*]}"
   echo
-  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)   $(b ccor) (+ccor-token, ccor-model)   $(b ccskip)   $(b cxskip)"
+  echo "commands: $(b cckimi) (+cckimi-token)   $(b ccglm) (+ccglm-token)"
+  echo "          $(b ccor) (+ccor-token, ccor-model)   $(b ccart) (+ccart-token, ccart-model)"
+  echo "          $(b ccskip)   $(b cxskip)"
   echo
-  echo "first run of $(b cckimi)/$(b ccglm)/$(b ccor) asks for the backend API key and caches it in"
-  echo "~/.kimi_token / ~/.zai_token / ~/.openrouter_token (chmod 600); update later with"
-  echo "cckimi-token / ccglm-token / ccor-token."
+  echo "first run of a backend launcher asks for its API key and caches it in ~/.kimi_token /"
+  echo "~/.zai_token / ~/.openrouter_token / ~/.agentrouter_token (chmod 600); update later with"
+  echo "cckimi-token / ccglm-token / ccor-token / ccart-token."
   echo
-  echo "$(b ccor) defaults to the free stealth/ox-alpha model (1M ctx, built for coding)."
-  echo "pick another any time with: $(b ccor-model) <id>   — browse https://openrouter.ai/models"
+  echo "$(b ccor) defaults to the free stealth/ox-alpha model, $(b ccart) to claude-opus-5."
+  echo "run $(b ccor-model) / $(b ccart-model) with no argument to pick another from a numbered list."
   echo
   if command -v claude >/dev/null 2>&1; then
     echo "$(g '✓') Claude Code: $(command -v claude)"
@@ -320,14 +447,15 @@ case "$-" in *i*) __cc_interactive=1 ;; esac
 if [ "$__cc_rc" -eq 0 ]; then
   if [ "$__cc_interactive" -eq 1 ]; then
     eval "$CC_BACKENDS_BLOCK"            # load into the CURRENT shell — ready immediately
-    printf '\n\033[32m✓\033[0m loaded into this shell — \033[1mcckimi\033[0m / \033[1mccglm\033[0m / \033[1mccor\033[0m / \033[1mccskip\033[0m / \033[1mcxskip\033[0m are ready to use now.\n\n'
+    printf '\n\033[32m✓\033[0m loaded into this shell — \033[1mcckimi\033[0m / \033[1mccglm\033[0m / \033[1mccor\033[0m / \033[1mccart\033[0m / \033[1mccskip\033[0m / \033[1mcxskip\033[0m are ready now.\n\n'
   else
     printf '\nreload your shell to use them now:\n'
     printf '  source ~/.bashrc            # or ~/.zshrc, or just open a new terminal\n'
     printf 'tip: install with  \033[1msource <(curl -fsSL …/install.sh)\033[0m  to load them into the current shell in one step.\n\n'
   fi
 elif [ "$__cc_rc" -eq 10 ] && [ "$__cc_interactive" -eq 1 ]; then
-  unset -f cckimi ccglm ccor cckimi-token ccglm-token ccor-token ccor-model __cc_set_token 2>/dev/null || true
+  unset -f cckimi ccglm ccor ccart cckimi-token ccglm-token ccor-token ccor-model \
+           ccart-token ccart-model __cc_set_token __cc_pick_model 2>/dev/null || true
   printf '\033[32m✓\033[0m also removed from this shell.\n'
 fi
 

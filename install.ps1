@@ -9,6 +9,7 @@
     cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
     ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
     ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token, ccor-model)
+    ccart  -> run Claude Code on the AgentRouter gateway       (+ ccart-token, ccart-model)
   Env vars are scoped via setlocal to each .cmd process, so they never leak into the caller.
   Claude Code itself is installed when missing, and its bin dirs are added to the User PATH.
 
@@ -21,7 +22,8 @@ param([switch]$Uninstall, [switch]$Yes)
 
 $ErrorActionPreference = 'Stop'
 $aliasDir = Join-Path $env:USERPROFILE 'apps\aliases'
-$names = @('cckimi','ccglm','ccor','cckimi-token','ccglm-token','ccor-token','ccor-model','ccskip','cxskip')
+$names = @('cckimi','ccglm','ccor','ccart','cckimi-token','ccglm-token','ccor-token','ccor-model',
+           'ccart-token','ccart-model','ccskip','cxskip')
 # Where the Claude Code installers put the binary - both go on PATH so 'claude' always resolves.
 $claudeBinDirs = @((Join-Path $env:USERPROFILE '.local\bin'), (Join-Path $env:USERPROFILE '.claude\bin'))
 
@@ -81,9 +83,10 @@ if ($Uninstall) {
         Remove-Item -LiteralPath (Join-Path $aliasDir "$n.cmd") -Force -ErrorAction SilentlyContinue
     }
     Remove-AliasDirFromUserPath $aliasDir
-    Write-Host "OK  cckimi / ccglm / ccor / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
-    Write-Host "note: token files %USERPROFILE%\.kimi_token, .zai_token and .openrouter_token were left"
-    Write-Host "      untouched, and Claude Code itself is not uninstalled."
+    Write-Host "OK  cckimi / ccglm / ccor / ccart / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
+    Write-Host "note: the cached token/model files (.kimi_token, .zai_token, .openrouter_token,"
+    Write-Host "      .agentrouter_token and the matching *_model files) were left untouched, and"
+    Write-Host "      Claude Code itself is not uninstalled."
     return
 }
 
@@ -94,7 +97,7 @@ if (-not $Yes) {
         return
     }
     Write-Host ""
-    Write-Host "WARNING (DANGEROUS MODE): cckimi / ccglm / ccor / ccskip / cxskip run Claude Code with" -ForegroundColor Yellow
+    Write-Host "WARNING (DANGEROUS MODE): cckimi / ccglm / ccor / ccart / ccskip / cxskip run Claude Code with" -ForegroundColor Yellow
     Write-Host "--dangerously-skip-permissions - it runs commands and edits files WITHOUT asking. Use only in trusted folders."
     $ans = Read-Host "Install these launchers anyway? [y/N]"
     if ($ans -notmatch '^\s*(y|yes)\s*$') { Write-Host "Aborted - nothing was changed."; return }
@@ -268,14 +271,137 @@ $cmds['ccor-model'] = @'
 @echo off
 setlocal
 set "MODELFILE=%USERPROFILE%\.openrouter_model"
-set "id=%~1"
-if "%id%"=="" set /p id=ccor-model - paste an OpenRouter model id, browse https://openrouter.ai/models :
-if "%id%"=="" (
-    echo ccor-model: no id given.
+set "chosen="
+if not "%~1"=="" set "chosen=%~1"
+if not "%chosen%"=="" goto :save
+set "current="
+if exist "%MODELFILE%" set /p current=<"%MODELFILE%"
+echo ccor-model - pick a model:
+if "%current%"=="stealth/ox-alpha" (echo    1. stealth/ox-alpha   [current]) else (echo    1. stealth/ox-alpha)
+if "%current%"=="anthropic/claude-opus-4.8" (echo    2. anthropic/claude-opus-4.8   [current]) else (echo    2. anthropic/claude-opus-4.8)
+if "%current%"=="anthropic/claude-sonnet-5" (echo    3. anthropic/claude-sonnet-5   [current]) else (echo    3. anthropic/claude-sonnet-5)
+if "%current%"=="anthropic/claude-haiku-4.5" (echo    4. anthropic/claude-haiku-4.5   [current]) else (echo    4. anthropic/claude-haiku-4.5)
+if "%current%"=="x-ai/grok-4.20" (echo    5. x-ai/grok-4.20   [current]) else (echo    5. x-ai/grok-4.20)
+if "%current%"=="openai/gpt-5.6-sol" (echo    6. openai/gpt-5.6-sol   [current]) else (echo    6. openai/gpt-5.6-sol)
+if "%current%"=="google/gemini-3.1-pro-preview" (echo    7. google/gemini-3.1-pro-preview   [current]) else (echo    7. google/gemini-3.1-pro-preview)
+if "%current%"=="deepseek/deepseek-v4-pro" (echo    8. deepseek/deepseek-v4-pro   [current]) else (echo    8. deepseek/deepseek-v4-pro)
+if "%current%"=="moonshotai/kimi-k3" (echo    9. moonshotai/kimi-k3   [current]) else (echo    9. moonshotai/kimi-k3)
+if "%current%"=="z-ai/glm-5" (echo    10. z-ai/glm-5   [current]) else (echo    10. z-ai/glm-5)
+echo     0. type a different id by hand
+set /p pick=choice [1-10, 0]: 
+if "%pick%"=="1" set "chosen=stealth/ox-alpha"
+if "%pick%"=="2" set "chosen=anthropic/claude-opus-4.8"
+if "%pick%"=="3" set "chosen=anthropic/claude-sonnet-5"
+if "%pick%"=="4" set "chosen=anthropic/claude-haiku-4.5"
+if "%pick%"=="5" set "chosen=x-ai/grok-4.20"
+if "%pick%"=="6" set "chosen=openai/gpt-5.6-sol"
+if "%pick%"=="7" set "chosen=google/gemini-3.1-pro-preview"
+if "%pick%"=="8" set "chosen=deepseek/deepseek-v4-pro"
+if "%pick%"=="9" set "chosen=moonshotai/kimi-k3"
+if "%pick%"=="10" set "chosen=z-ai/glm-5"
+if "%pick%"=="0" set /p chosen=model id: 
+:save
+if "%chosen%"=="" (
+    echo ccor-model: nothing picked, %MODELFILE% left unchanged.
     exit /b 1
 )
->"%MODELFILE%" echo %id%
-echo ccor-model: model set to %id% (%MODELFILE%).
+>"%MODELFILE%" echo %chosen%
+echo ccor-model: model set to %chosen% (%MODELFILE%).
+echo echo More ids: https://openrouter.ai/models
+'@
+$cmds['ccart'] = @'
+@echo off
+setlocal
+set "TOKENFILE=%USERPROFILE%\.agentrouter_token"
+set "MODELFILE=%USERPROFILE%\.agentrouter_model"
+set "token="
+if exist "%TOKENFILE%" set /p token=<"%TOKENFILE%"
+if not "%token%"=="" goto :run
+set /p token=ccart: no API key found. Enter your AgentRouter API key:
+if "%token%"=="" (
+    echo ccart: no key entered, aborting.
+    exit /b 1
+)
+>"%TOKENFILE%" echo %token%
+icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
+echo ccart: key saved to %TOKENFILE% (current-user only).
+:run
+rem ---- Models: leave these EMPTY to follow ccart-model / the default below ---------
+rem AgentRouter serves a short list - claude-opus-5, claude-opus-4-8, gpt-5.6-sol,
+rem deepseek-v4f. Fill one in only to pin that tier here.
+set "AR_MODEL="
+set "AR_SONNET_MODEL="
+set "AR_HAIKU_MODEL="
+set "AR_FABLE_MODEL="
+set "AR_SUBAGENT_MODEL="
+set "AR_DEFAULT_MODEL=claude-opus-5"
+rem ---------------------------------------------------------------------------------
+rem Resolution order for the main model: pinned above -> .agentrouter_model -> default.
+if "%AR_MODEL%"=="" if exist "%MODELFILE%" set /p AR_MODEL=<"%MODELFILE%"
+if "%AR_MODEL%"=="" (
+    set "AR_MODEL=%AR_DEFAULT_MODEL%"
+    echo ccart: no model set, falling back to %AR_DEFAULT_MODEL% -- change it with: ccart-model your-model-id
+)
+if "%AR_SONNET_MODEL%"=="" set "AR_SONNET_MODEL=%AR_MODEL%"
+if "%AR_HAIKU_MODEL%"=="" set "AR_HAIKU_MODEL=%AR_MODEL%"
+if "%AR_FABLE_MODEL%"=="" set "AR_FABLE_MODEL=%AR_MODEL%"
+if "%AR_SUBAGENT_MODEL%"=="" set "AR_SUBAGENT_MODEL=%AR_MODEL%"
+set "ANTHROPIC_BASE_URL=https://agentrouter.org"
+set "ANTHROPIC_AUTH_TOKEN=%token%"
+rem ANTHROPIC_API_KEY is blanked so the gateway only ever sees the Bearer token:
+rem Claude Code sends ANTHROPIC_API_KEY as x-api-key, a direct-Anthropic credential.
+set "ANTHROPIC_API_KEY="
+set "ANTHROPIC_MODEL=%AR_MODEL%"
+set "ANTHROPIC_DEFAULT_OPUS_MODEL=%AR_MODEL%"
+set "ANTHROPIC_DEFAULT_SONNET_MODEL=%AR_SONNET_MODEL%"
+set "ANTHROPIC_DEFAULT_HAIKU_MODEL=%AR_HAIKU_MODEL%"
+set "ANTHROPIC_DEFAULT_FABLE_MODEL=%AR_FABLE_MODEL%"
+set "CLAUDE_CODE_SUBAGENT_MODEL=%AR_SUBAGENT_MODEL%"
+set "API_TIMEOUT_MS=3000000"
+call claude --dangerously-skip-permissions %*
+'@
+$cmds['ccart-token'] = @'
+@echo off
+setlocal
+set "TOKENFILE=%USERPROFILE%\.agentrouter_token"
+set "key=%~1"
+if "%key%"=="" set /p key=ccart-token - paste API key:
+if "%key%"=="" (
+    echo ccart-token: no key given.
+    exit /b 1
+)
+>"%TOKENFILE%" echo %key%
+icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
+echo ccart-token: key written to %TOKENFILE% (current-user only).
+'@
+$cmds['ccart-model'] = @'
+@echo off
+setlocal
+set "MODELFILE=%USERPROFILE%\.agentrouter_model"
+set "chosen="
+if not "%~1"=="" set "chosen=%~1"
+if not "%chosen%"=="" goto :save
+set "current="
+if exist "%MODELFILE%" set /p current=<"%MODELFILE%"
+echo ccart-model - pick a model:
+if "%current%"=="claude-opus-5" (echo    1. claude-opus-5   [current]) else (echo    1. claude-opus-5)
+if "%current%"=="claude-opus-4-8" (echo    2. claude-opus-4-8   [current]) else (echo    2. claude-opus-4-8)
+if "%current%"=="gpt-5.6-sol" (echo    3. gpt-5.6-sol   [current]) else (echo    3. gpt-5.6-sol)
+if "%current%"=="deepseek-v4f" (echo    4. deepseek-v4f   [current]) else (echo    4. deepseek-v4f)
+echo     0. type a different id by hand
+set /p pick=choice [1-4, 0]: 
+if "%pick%"=="1" set "chosen=claude-opus-5"
+if "%pick%"=="2" set "chosen=claude-opus-4-8"
+if "%pick%"=="3" set "chosen=gpt-5.6-sol"
+if "%pick%"=="4" set "chosen=deepseek-v4f"
+if "%pick%"=="0" set /p chosen=model id: 
+:save
+if "%chosen%"=="" (
+    echo ccart-model: nothing picked, %MODELFILE% left unchanged.
+    exit /b 1
+)
+>"%MODELFILE%" echo %chosen%
+echo ccart-model: model set to %chosen% (%MODELFILE%).
 '@
 
 foreach ($name in $cmds.Keys) {
@@ -294,16 +420,18 @@ $claudeOk = Install-ClaudeCode
 Write-Host ""
 Write-Host "OK  claude-code-backends installed -> $aliasDir (added to PATH)" -ForegroundColor Green
 Write-Host ""
-Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)   ccor (+ccor-token, ccor-model)   ccskip   cxskip"
+Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)"
+Write-Host "          ccor (+ccor-token, ccor-model)   ccart (+ccart-token, ccart-model)"
+Write-Host "          ccskip   cxskip"
 Write-Host ""
 Write-Host "Ready in THIS PowerShell session now (the alias folder was added to the current PATH)." -ForegroundColor Green
 Write-Host "Open a new window only for cmd.exe / other shells to pick up the persisted PATH."
-Write-Host "First run of cckimi/ccglm/ccor asks for the backend API key and caches it in"
-Write-Host "%USERPROFILE%\.kimi_token / .zai_token / .openrouter_token; update later with"
-Write-Host "cckimi-token / ccglm-token / ccor-token."
+Write-Host "First run of a backend launcher asks for its API key and caches it in %USERPROFILE%\.kimi_token"
+Write-Host "/ .zai_token / .openrouter_token / .agentrouter_token; update later with cckimi-token /"
+Write-Host "ccglm-token / ccor-token / ccart-token."
 Write-Host ""
-Write-Host "ccor defaults to the free stealth/ox-alpha model (1M ctx, built for coding)." -ForegroundColor Yellow
-Write-Host "Pick another any time with:  ccor-model <id>   - browse https://openrouter.ai/models"
+Write-Host "ccor defaults to the free stealth/ox-alpha model, ccart to claude-opus-5." -ForegroundColor Yellow
+Write-Host "Run ccor-model / ccart-model with no argument to pick another from a numbered list."
 Write-Host ""
 if ($claudeOk) {
     Write-Host "OK  Claude Code: $((Get-Command claude).Source)" -ForegroundColor Green
