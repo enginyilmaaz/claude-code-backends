@@ -11,7 +11,7 @@ tells you exactly what will be written, overwritten and removed before anything 
 **Claude Code itself is installed for you** when it is missing, and the directories its installer uses
 are added to PATH — so a fresh machine goes from nothing to a working launcher in one command.
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 
 ## ✨ What you get
 
@@ -171,10 +171,29 @@ The choice is cached in `~/.openrouter_model` / `~/.agentrouter_model` (same nam
 
 | | default | why |
 |---|---|---|
-| `ccort` | `stealth/ox-alpha` | 1M-context reasoning model built for coding and sustained agentic work — currently **free** on OpenRouter |
+| `ccort` | `stealth/ox-alpha[1m]` | 1M-context reasoning model built for coding and sustained agentic work — currently **free** on OpenRouter |
 | `ccart` | `claude-opus-5` | the strongest Claude on AgentRouter's catalogue |
 
-Each prints a one-line notice while the fallback is in play, so you always know what you are running on.
+The first run **adopts** that default — it prints a one-line notice and writes the id to the model
+file, so the notice never appears again. From then on you are running on a model you can see and
+change with the picker.
+
+### The `[1m]` suffix
+
+Claude Code only knows the context window of models it ships with. A gateway id like
+`stealth/ox-alpha` is unknown to it, so it assumes **200k** and starts auto-compacting long before
+it needs to — on a 1M-context model that throws away most of your window. Appending `[1m]` to the id
+tells it the real size:
+
+```
+stealth/ox-alpha[1m]           # 1M window, compacts at the right point
+stealth/ox-alpha               # treated as 200k
+```
+
+The picker already tags every entry whose window is 1M or larger, so a picked model is correct
+without you doing anything. If you type an id by hand with option `0`, add `[1m]` yourself when the
+model has a big window — and leave it off when it doesn't (`anthropic/claude-haiku-4.5`, `z-ai/glm-5`).
+Native Anthropic ids such as `claude-opus-5` need no suffix; Claude Code already knows them.
 
 `ccort`'s picker is a shortlist — option `0` takes **any** id from
 [openrouter.ai/models](https://openrouter.ai/models), pinned (`anthropic/claude-opus-4.8`) or in the
