@@ -3,12 +3,14 @@
   claude-code-backends - installer (Windows)
   Repo: https://github.com/enginyilmaaz/claude-code-backends
 
-  Installs two Claude Code backend launchers as standalone .cmd commands under
+  Installs three Claude Code backend launchers as standalone .cmd commands under
   %USERPROFILE%\apps\aliases and adds that folder to the User PATH, so they work
   from ANY shell (cmd, PowerShell, Run):
     cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
     ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
+    ccor   -> run Claude Code on the OpenRouter gateway        (+ ccor-token)
   Env vars are scoped via setlocal to each .cmd process, so they never leak into the caller.
+  Claude Code itself is installed when missing, and its bin dirs are added to the User PATH.
 
   Quick install:
     irm https://gist.githubusercontent.com/enginyilmaaz/2b903923ea111f741ca50a878ee9d2f8/raw/install.ps1 | iex
@@ -19,7 +21,9 @@ param([switch]$Uninstall, [switch]$Yes)
 
 $ErrorActionPreference = 'Stop'
 $aliasDir = Join-Path $env:USERPROFILE 'apps\aliases'
-$names = @('cckimi','ccglm','cckimi-token','ccglm-token','ccskip','cxskip')
+$names = @('cckimi','ccglm','ccor','cckimi-token','ccglm-token','ccor-token','ccskip','cxskip')
+# Where the Claude Code installers put the binary - both go on PATH so 'claude' always resolves.
+$claudeBinDirs = @((Join-Path $env:USERPROFILE '.local\bin'), (Join-Path $env:USERPROFILE '.claude\bin'))
 
 function Remove-AliasDirFromUserPath([string]$dir) {
     $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if (-not $userPath) { return }
@@ -27,13 +31,59 @@ function Remove-AliasDirFromUserPath([string]$dir) {
     [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')
 }
 
+# Persist $dir in the User PATH and make it usable in THIS session right away.
+function Add-DirToPath([string]$dir) {
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User'); if (-not $userPath) { $userPath = '' }
+    if (($userPath -split ';') -notcontains $dir) {
+        $trimmed = $userPath.TrimEnd(';')
+        $newPath = if ($trimmed) { $trimmed + ';' + $dir } else { $dir }
+        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+    }
+    $cur = [string]$env:Path
+    if (($cur -split ';') -notcontains $dir) { $env:Path = ($cur.TrimEnd(';') + ';' + $dir).TrimStart(';') }
+}
+
+# Re-read the persisted PATH (an installer that just ran wrote to it) and add the Claude bin dirs.
+function Update-ClaudeSessionPath {
+    try {
+        $merged = @([Environment]::GetEnvironmentVariable('Path','Machine'),
+                    [Environment]::GetEnvironmentVariable('Path','User')) | Where-Object { $_ }
+        if ($merged) { $env:Path = ($merged -join ';') }
+    } catch { }
+    foreach ($d in $claudeBinDirs) {
+        if ((Test-Path -LiteralPath $d) -and (($env:Path -split ';') -notcontains $d)) { $env:Path = "$d;$env:Path" }
+    }
+}
+
+function Test-ClaudeInstalled { [bool](Get-Command claude -ErrorAction SilentlyContinue) }
+
+# Install Claude Code when it is missing: native installer first, npm as the fallback.
+function Install-ClaudeCode {
+    Update-ClaudeSessionPath
+    if (Test-ClaudeInstalled) { return $true }
+    Write-Host ""
+    Write-Host "claude not found - installing Claude Code..." -ForegroundColor Cyan
+    try { Invoke-Expression (Invoke-RestMethod -Uri 'https://claude.ai/install.ps1') }
+    catch { Write-Host "Native Claude installer failed: $($_.Exception.Message)" -ForegroundColor Yellow }
+    Update-ClaudeSessionPath
+    if (-not (Test-ClaudeInstalled) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Host "Falling back to npm..." -ForegroundColor Yellow
+        npm install -g '@anthropic-ai/claude-code'
+        Update-ClaudeSessionPath
+    }
+    # Persist whichever bin dir the installer actually used, so new shells find it too.
+    foreach ($d in $claudeBinDirs) { if (Test-Path -LiteralPath $d) { Add-DirToPath $d } }
+    return (Test-ClaudeInstalled)
+}
+
 if ($Uninstall) {
     foreach ($n in $names) {
         Remove-Item -LiteralPath (Join-Path $aliasDir "$n.cmd") -Force -ErrorAction SilentlyContinue
     }
     Remove-AliasDirFromUserPath $aliasDir
-    Write-Host "OK  cckimi / ccglm / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
-    Write-Host "note: token files %USERPROFILE%\.kimi_token and %USERPROFILE%\.zai_token were left untouched."
+    Write-Host "OK  cckimi / ccglm / ccor / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
+    Write-Host "note: token files %USERPROFILE%\.kimi_token, .zai_token and .openrouter_token were left"
+    Write-Host "      untouched, and Claude Code itself is not uninstalled."
     return
 }
 
@@ -44,7 +94,7 @@ if (-not $Yes) {
         return
     }
     Write-Host ""
-    Write-Host "WARNING (DANGEROUS MODE): cckimi / ccglm / ccskip / cxskip run Claude Code with" -ForegroundColor Yellow
+    Write-Host "WARNING (DANGEROUS MODE): cckimi / ccglm / ccor / ccskip / cxskip run Claude Code with" -ForegroundColor Yellow
     Write-Host "--dangerously-skip-permissions - it runs commands and edits files WITHOUT asking. Use only in trusted folders."
     $ans = Read-Host "Install these launchers anyway? [y/N]"
     if ($ans -notmatch '^\s*(y|yes)\s*$') { Write-Host "Aborted - nothing was changed."; return }
@@ -119,6 +169,58 @@ set "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
 set "API_TIMEOUT_MS=3000000"
 call claude --dangerously-skip-permissions %*
 '@
+$cmds['ccor'] = @'
+@echo off
+setlocal
+set "TOKENFILE=%USERPROFILE%\.openrouter_token"
+set "token="
+if exist "%TOKENFILE%" set /p token=<"%TOKENFILE%"
+if not "%token%"=="" goto :run
+set /p token=ccor: no API key found. Enter your OpenRouter API key:
+if "%token%"=="" (
+    echo ccor: no key entered, aborting.
+    exit /b 1
+)
+>"%TOKENFILE%" echo %token%
+icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
+echo ccor: key saved to %TOKENFILE% (current-user only).
+:run
+rem ---- OpenRouter models: intentionally LEFT EMPTY -- fill them in yourself -------
+rem Model ids come from https://openrouter.ai/models, e.g. anthropic/claude-opus-4.5
+rem or the tilde "latest" form ~anthropic/claude-opus-latest. Only OR_MODEL is
+rem required; every tier left blank falls back to it.
+set "OR_MODEL="
+set "OR_SONNET_MODEL="
+set "OR_HAIKU_MODEL="
+set "OR_FABLE_MODEL="
+set "OR_SUBAGENT_MODEL="
+rem --------------------------------------------------------------------------------
+if "%OR_MODEL%"=="" (
+    echo ccor: no model set yet. Edit "%USERPROFILE%\apps\aliases\ccor.cmd" and fill in
+    echo       OR_MODEL= with an OpenRouter model id -- pick one at
+    echo       https://openrouter.ai/models
+    exit /b 1
+)
+if "%OR_SONNET_MODEL%"=="" set "OR_SONNET_MODEL=%OR_MODEL%"
+if "%OR_HAIKU_MODEL%"=="" set "OR_HAIKU_MODEL=%OR_MODEL%"
+if "%OR_FABLE_MODEL%"=="" set "OR_FABLE_MODEL=%OR_MODEL%"
+if "%OR_SUBAGENT_MODEL%"=="" set "OR_SUBAGENT_MODEL=%OR_MODEL%"
+set "ANTHROPIC_BASE_URL=https://openrouter.ai/api"
+set "ANTHROPIC_AUTH_TOKEN=%token%"
+rem ANTHROPIC_API_KEY must stay empty: Claude Code would send it as x-api-key, which
+rem OpenRouter treats as a direct-Anthropic credential and the request fails to auth.
+set "ANTHROPIC_API_KEY="
+set "ANTHROPIC_MODEL=%OR_MODEL%"
+set "ANTHROPIC_DEFAULT_OPUS_MODEL=%OR_MODEL%"
+set "ANTHROPIC_DEFAULT_SONNET_MODEL=%OR_SONNET_MODEL%"
+set "ANTHROPIC_DEFAULT_HAIKU_MODEL=%OR_HAIKU_MODEL%"
+set "ANTHROPIC_DEFAULT_FABLE_MODEL=%OR_FABLE_MODEL%"
+set "CLAUDE_CODE_SUBAGENT_MODEL=%OR_SUBAGENT_MODEL%"
+set "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1"
+set "CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK=1"
+set "API_TIMEOUT_MS=3000000"
+call claude --dangerously-skip-permissions %*
+'@
 $cmds['cckimi-token'] = @'
 @echo off
 setlocal
@@ -147,6 +249,20 @@ if "%key%"=="" (
 icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
 echo ccglm-token: key written to %TOKENFILE% (current-user only).
 '@
+$cmds['ccor-token'] = @'
+@echo off
+setlocal
+set "TOKENFILE=%USERPROFILE%\.openrouter_token"
+set "key=%~1"
+if "%key%"=="" set /p key=ccor-token - paste API key:
+if "%key%"=="" (
+    echo ccor-token: no key given.
+    exit /b 1
+)
+>"%TOKENFILE%" echo %key%
+icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
+echo ccor-token: key written to %TOKENFILE% (current-user only).
+'@
 
 foreach ($name in $cmds.Keys) {
     # force CRLF + ASCII (no BOM) so cmd.exe handles labels/goto correctly
@@ -156,22 +272,28 @@ foreach ($name in $cmds.Keys) {
 }
 
 # Add the aliases folder to the User PATH (persisted) + the current session.
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User'); if (-not $userPath) { $userPath = '' }
-if (($userPath -split ';') -notcontains $aliasDir) {
-    $trimmed = $userPath.TrimEnd(';')
-    $newPath = if ($trimmed) { $trimmed + ';' + $aliasDir } else { $aliasDir }
-    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-}
-$cur = [string]$env:Path
-if (($cur -split ';') -notcontains $aliasDir) { $env:Path = ($cur.TrimEnd(';') + ';' + $aliasDir).TrimStart(';') }
+Add-DirToPath $aliasDir
+
+# Claude Code itself - every launcher shells out to it, so install it when it is missing.
+$claudeOk = Install-ClaudeCode
 
 Write-Host ""
 Write-Host "OK  claude-code-backends installed -> $aliasDir (added to PATH)" -ForegroundColor Green
 Write-Host ""
-Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)   ccskip   cxskip"
+Write-Host "commands: cckimi (+cckimi-token)   ccglm (+ccglm-token)   ccor (+ccor-token)   ccskip   cxskip"
 Write-Host ""
 Write-Host "Ready in THIS PowerShell session now (the alias folder was added to the current PATH)." -ForegroundColor Green
 Write-Host "Open a new window only for cmd.exe / other shells to pick up the persisted PATH."
-Write-Host "First run of cckimi/ccglm asks for the backend API key and caches it in"
-Write-Host "%USERPROFILE%\.kimi_token / .zai_token; update later with cckimi-token / ccglm-token."
-Write-Host "Requires Claude Code installed."
+Write-Host "First run of cckimi/ccglm/ccor asks for the backend API key and caches it in"
+Write-Host "%USERPROFILE%\.kimi_token / .zai_token / .openrouter_token; update later with"
+Write-Host "cckimi-token / ccglm-token / ccor-token."
+Write-Host ""
+Write-Host "ccor ships with NO model set - open $aliasDir\ccor.cmd and fill in OR_MODEL= with" -ForegroundColor Yellow
+Write-Host "an OpenRouter model id from https://openrouter.ai/models"
+Write-Host ""
+if ($claudeOk) {
+    Write-Host "OK  Claude Code: $((Get-Command claude).Source)" -ForegroundColor Green
+} else {
+    Write-Host "WARNING: Claude Code is still not on PATH - install it manually:" -ForegroundColor Yellow
+    Write-Host "         https://claude.com/claude-code"
+}
