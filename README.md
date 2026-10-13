@@ -1,8 +1,9 @@
 # claude-code-backends
 
-One-line installers — **Linux/macOS and Windows** — for four Claude Code **backend launchers**:
-run Claude Code against the **Kimi (Moonshot)**, **Z.AI GLM**, **OpenRouter** or **AgentRouter**
-backend with a single command, with per-user token caching. Plus `ccskip` / `cxskip` — quick `--dangerously-skip-permissions`
+One-line installers — **Linux/macOS and Windows** — for five Claude Code **backend launchers**:
+run Claude Code against the **Anthropic Console API**, the **Kimi (Moonshot)**, **Z.AI GLM**,
+**OpenRouter** or **AgentRouter** backend with a single command, with per-user token caching.
+Plus `ccskip` / `cxskip` — quick `--dangerously-skip-permissions`
 launchers for your **normal Anthropic login** (Opus 5).
 
 The installer is a **picker**: SPACE toggles the launchers you want, ENTER confirms, and a summary
@@ -11,12 +12,14 @@ tells you exactly what will be written, overwritten and removed before anything 
 **Claude Code itself is installed for you** when it is missing, and the directories its installer uses
 are added to PATH — so a fresh machine goes from nothing to a working launcher in one command.
 
-**Version:** 2.1.0
+**Version:** 2.2.0
 
 ## ✨ What you get
 
 | Command | What it does |
 |---------|--------------|
+| `ccapi` | Runs **Claude Code on the Anthropic Console API** — billed per token to that key, **independent of any Claude subscription**. First run asks for your Console API key and caches it. Pinned to `claude-opus-5-5`. |
+| `ccapi-token` | Set/update the cached Anthropic Console key. |
 | `cckimi` | Runs **Claude Code on the Kimi (Moonshot) backend**. First run asks for your Kimi API key and caches it. |
 | `cckimi-token` | Set/update the cached Kimi key. |
 | `ccglm` | Runs **Claude Code on the Z.AI GLM backend**. First run asks for your Z.AI key and caches it. |
@@ -30,8 +33,26 @@ are added to PATH — so a fresh machine goes from nothing to a working launcher
 | `ccskip` | Runs Claude Code on your **normal Anthropic login** (no backend token) — permissions skipped, effort max, pinned to the latest **Opus 5**. |
 | `cxskip` | Same as `ccskip` — an alternate name, also **Opus 5**. |
 
-All four just point Claude Code at a different `ANTHROPIC_BASE_URL` + model via scoped env
-vars — your normal `claude` login is untouched, and the backend env never leaks into your shell.
+Each one just swaps the credential (and the model) through scoped env vars: the gateways point
+`ANTHROPIC_BASE_URL` somewhere else, while `ccapi` stays on the first-party API and supplies an
+API key instead of your login. Your normal `claude` login is untouched either way, and the
+backend env never leaks into your shell.
+
+### `ccapi` — the Console API, no subscription involved
+
+`ccapi` is the one launcher that stays on Anthropic's own API (`api.anthropic.com`) and only
+changes *who pays*. Claude Code's [authentication precedence](https://code.claude.com/docs/en/authentication#authentication-precedence)
+ranks `ANTHROPIC_API_KEY` **above** the `/login` subscription credential, so `ccapi` bills your
+Console key per token while `ccskip` on the same machine keeps billing your Pro/Max plan — no
+logging out, no second config directory, no `/login` dance. `ANTHROPIC_AUTH_TOKEN` (which ranks
+*above* the API key) is blanked and the base URL is pinned, so a gateway left in your environment
+cannot hijack the run.
+
+The first interactive run asks once to approve the key over your login — answer yes. The choice is
+remembered, and reversible from `/config` → "Use custom API key". Get a key at
+[platform.claude.com/settings/keys](https://platform.claude.com/settings/keys); the spend lands on
+the Console's usage page instead of your subscription limits. The model is pinned to
+`claude-opus-5-5` — switch inside a session with `/model` as usual, since these are native ids.
 
 ## 🚀 Quick install
 
@@ -60,6 +81,7 @@ Both platforms open the same picker:
 ```
   Select the launchers to install:
  > [x] ccskip / cxskip   your Anthropic login, skip-permissions (Opus 5)
+   [x] ccapi             Anthropic Console API key (claude-opus-5-5)
    [x] cckimi            Kimi (Moonshot) backend
    [x] ccglm             Z.AI GLM backend
    [x] ccort             OpenRouter gateway (stealth/ox-alpha)   installed
@@ -111,12 +133,12 @@ asking**. Your cached OpenRouter key and model are untouched: `ccort` reads the 
 
 ## 🔐 Tokens & security
 
-- Keys are read once, then cached per-user: `~/.kimi_token`, `~/.zai_token`, `~/.openrouter_token`,
-  `~/.agentrouter_token` on Linux/macOS (`chmod 600`); the same names under `%USERPROFILE%\` on Windows
+- Keys are read once, then cached per-user: `~/.anthropic_token`, `~/.kimi_token`, `~/.zai_token`,
+  `~/.openrouter_token`, `~/.agentrouter_token` on Linux/macOS (`chmod 600`); the same names under `%USERPROFILE%\` on Windows
   (`icacls`, current-user only). Gateway keys are cached in those files like every other backend key —
   they are **not** read from `OPENROUTER_API_KEY` / `AGENTROUTER_API_KEY` environment variables.
 - Nothing is committed or transmitted anywhere except the backend you call.
-- Rotate a key any time with `cckimi-token` / `ccglm-token` / `ccort-token` / `ccart-token` (or pass it as the first argument).
+- Rotate a key any time with `ccapi-token` / `cckimi-token` / `ccglm-token` / `ccort-token` / `ccart-token` (or pass it as the first argument).
 - Model ids are **not** secrets and live beside them in `~/.openrouter_model` / `~/.agentrouter_model` — set them with `ccort-model` / `ccart-model`.
 - All launchers run Claude Code with `--dangerously-skip-permissions` (Claude runs commands and edits
   files **without asking**). The **installer** warns and asks you to confirm once before installing —
@@ -127,6 +149,9 @@ asking**. Your cached OpenRouter key and model are untouched: `ccort` reads the 
 
 Each launcher maps Claude Code's model tiers to a fitting backend model — the heavy tiers
 and the subagents get the flagship, while the lighter/background tiers get a cheaper model:
+
+`ccapi` is not in the table: it talks to the real Anthropic API, so Claude Code's own per-tier
+defaults apply unchanged.
 
 | Claude tier | `cckimi` (Kimi) | `ccglm` (Z.AI GLM) | `ccort` / `ccart` (gateways) |
 |-------------|-----------------|--------------------|---------------------|
@@ -236,6 +261,8 @@ and the [AgentRouter × Claude Code guide](https://agentrouter.org/docs/claude-c
 
 - [Claude Code](https://claude.com/claude-code) — installed automatically if it is missing.
 - Linux/macOS: `bash` (zsh also supported), plus `curl`. Windows: PowerShell 5+.
+- An Anthropic Console API key (https://platform.claude.com/settings/keys) for `ccapi` — a Console
+  account with credit, not a Claude.ai subscription.
 - A Kimi key (https://platform.moonshot.ai) for `cckimi`, a Z.AI key (https://z.ai/subscribe) for `ccglm`,
   an OpenRouter key (https://openrouter.ai/keys) for `ccort`, an AgentRouter key
   (https://agentrouter.org — free, register for one) for `ccart`.

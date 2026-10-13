@@ -5,6 +5,7 @@
 # Interactive picker for the Claude Code backend launchers, written into your rc file
 # (~/.bashrc and ~/.zshrc if present):
 #   ccskip / cxskip -> your NORMAL Anthropic login, permissions skipped (Opus 5)
+#   ccapi  -> Anthropic Console API key, no subscription  (+ ccapi-token)
 #   cckimi -> Kimi (Moonshot) backend        (+ cckimi-token)
 #   ccglm  -> Z.AI GLM backend               (+ ccglm-token)
 #   ccort  -> OpenRouter gateway             (+ ccort-token, ccort-model)
@@ -33,7 +34,7 @@
 # ------------------------------------------------------------------ catalogue ---
 # Order shown in the picker. Each key maps to a label, the extra commands it brings
 # along, and the rc snippet emitted by __cc_part.
-CC_KEYS="ccskip cckimi ccglm ccort ccart"
+CC_KEYS="ccskip ccapi cckimi ccglm ccort ccart"
 
 # Commands from earlier versions that are wiped on every confirmed run, no questions
 # asked: the ccor family was renamed to ccort, claude-skip/codex-skip are long gone.
@@ -42,6 +43,7 @@ CC_DEPRECATED="ccor ccor-token ccor-model claude-skip codex-skip"
 __cc_label() {
     case "$1" in
         ccskip) printf 'ccskip / cxskip   your Anthropic login, skip-permissions (Opus 5)' ;;
+        ccapi)  printf 'ccapi             Anthropic Console API key (claude-opus-5-5)' ;;
         cckimi) printf 'cckimi            Kimi (Moonshot) backend' ;;
         ccglm)  printf 'ccglm             Z.AI GLM backend' ;;
         ccort)  printf 'ccort             OpenRouter gateway (stealth/ox-alpha)' ;;
@@ -53,6 +55,7 @@ __cc_label() {
 __cc_cmds() {
     case "$1" in
         ccskip) printf 'ccskip cxskip' ;;
+        ccapi)  printf 'ccapi ccapi-token' ;;
         cckimi) printf 'cckimi cckimi-token' ;;
         ccglm)  printf 'ccglm ccglm-token' ;;
         ccort)  printf 'ccort ccort-token ccort-model' ;;
@@ -68,6 +71,40 @@ __cc_part() {
 # permissions skipped + effort max. Both pin the latest Opus (claude-opus-5).
 ccskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-5 "$@"; }
 cxskip() { command claude --dangerously-skip-permissions --effort max --model claude-opus-5 "$@"; }
+CC_PART_EOF
+    ;;
+    ccapi) cat <<'CC_PART_EOF'
+# ccapi -> runs Claude Code on the Anthropic Console API (key lives in ~/.anthropic_token,
+# chmod 600). Billed per token to that key's Console credit, NOT to a Claude subscription:
+# ANTHROPIC_API_KEY outranks the /login credential, so it bills the key while you stay
+# logged in -- and ccskip, on the same machine, keeps using the subscription.
+ccapi() {
+    local token_file="$HOME/.anthropic_token"
+    local token
+    token="$([ -r "$token_file" ] && tr -d '[:space:]' < "$token_file")"
+    if [ -z "$token" ]; then
+        printf 'ccapi: no API key found. Enter your Anthropic Console API key and press Enter: ' >&2
+        IFS= read -rs token < /dev/tty
+        printf '\n' >&2
+        token="$(printf '%s' "$token" | tr -d '[:space:]')"
+        if [ -z "$token" ]; then
+            printf 'ccapi: no key entered, aborting.\n' >&2
+            return 1
+        fi
+        ( umask 177; printf '%s\n' "$token" > "$token_file" ) && chmod 600 "$token_file"
+        printf 'ccapi: key saved to %s (mode 600).\n' "$token_file" >&2
+    fi
+    # ANTHROPIC_AUTH_TOKEN ranks ABOVE the API key, so blank it in case a gateway left one
+    # in the environment; the base URL is pinned to first-party for the same reason.
+    # The first interactive run asks once to approve the key before it overrides the
+    # subscription -- say yes (reversible later via /config "Use custom API key").
+    ANTHROPIC_API_KEY="$token" \
+    ANTHROPIC_AUTH_TOKEN="" \
+    ANTHROPIC_BASE_URL="https://api.anthropic.com" \
+    command claude --dangerously-skip-permissions --model claude-opus-5-5 "$@"
+}
+
+ccapi-token() { __cc_set_token ccapi "$HOME/.anthropic_token" "$1"; }
 CC_PART_EOF
     ;;
     cckimi) cat <<'CC_PART_EOF'
@@ -498,9 +535,9 @@ __cc_backends_run() (
     --uninstall)
       for rc in "${targets[@]}"; do strip_block "$rc"; purge_deprecated "$rc"; done
       echo "$(g '✓') launchers removed from: ${targets[*]}"
-      echo "note: the cached token/model files (~/.kimi_token, ~/.zai_token, ~/.openrouter_token,"
-      echo "      ~/.agentrouter_token and the matching *_model files) were left untouched,"
-      echo "      and Claude Code itself is not uninstalled."
+      echo "note: the cached token/model files (~/.anthropic_token, ~/.kimi_token, ~/.zai_token,"
+      echo "      ~/.openrouter_token, ~/.agentrouter_token and the matching *_model files) were"
+      echo "      left untouched, and Claude Code itself is not uninstalled."
       exit 10 ;;
   esac
 
@@ -561,7 +598,7 @@ __cc_backends_run() (
   # Assemble the rc block out of the chosen parts only.
   need_token=0; need_pick=0
   for key in $chosen; do
-    case "$key" in cckimi|ccglm|ccort|ccart) need_token=1 ;; esac
+    case "$key" in ccapi|cckimi|ccglm|ccort|ccart) need_token=1 ;; esac
     case "$key" in ccort|ccart) need_pick=1 ;; esac
   done
   all_cmds=""
@@ -623,9 +660,15 @@ __cc_backends_run() (
     echo "removed (deprecated): ${dep_found# }"
   fi
   echo
-  echo "first run of a backend launcher asks for its API key and caches it in ~/.kimi_token /"
-  echo "~/.zai_token / ~/.openrouter_token / ~/.agentrouter_token (chmod 600); update later with"
-  echo "the matching *-token command."
+  echo "first run of a backend launcher asks for its API key and caches it in ~/.anthropic_token /"
+  echo "~/.kimi_token / ~/.zai_token / ~/.openrouter_token / ~/.agentrouter_token (chmod 600);"
+  echo "update later with the matching *-token command."
+  case " $chosen " in *" ccapi "*)
+    echo
+    echo "$(b ccapi) runs on an Anthropic Console API key (platform.claude.com/settings/keys) and"
+    echo "bills that key per token -- no subscription involved. Claude Code asks once, on the"
+    echo "first interactive run, to approve the key over your login; answer yes." ;;
+  esac
   case " $chosen " in *" ccort "*|*" ccart "*)
     echo
     echo "$(b ccort) defaults to the free stealth/ox-alpha model, $(b ccart) to claude-opus-5."
@@ -658,8 +701,8 @@ if [ "$__cc_rc" -eq 0 ]; then
     printf 'tip: install with  \033[1msource <(curl -fsSL …/install.sh)\033[0m  to load them into the current shell in one step.\n\n'
   fi
 elif [ "$__cc_rc" -eq 10 ] && [ "$__cc_interactive" -eq 1 ]; then
-  unset -f cckimi ccglm ccort ccart cckimi-token ccglm-token ccort-token ccort-model \
-           ccart-token ccart-model __cc_set_token __cc_pick_model 2>/dev/null || true
+  unset -f ccapi cckimi ccglm ccort ccart ccapi-token cckimi-token ccglm-token ccort-token \
+           ccort-model ccart-token ccart-model __cc_set_token __cc_pick_model 2>/dev/null || true
   printf '\033[32m✓\033[0m also removed from this shell.\n'
 fi
 rm -f "$CC_TMP_BLOCK" 2>/dev/null || true

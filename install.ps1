@@ -6,6 +6,7 @@
   Installs three Claude Code backend launchers as standalone .cmd commands under
   %USERPROFILE%\apps\aliases and adds that folder to the User PATH, so they work
   from ANY shell (cmd, PowerShell, Run):
+    ccapi  -> run Claude Code on the Anthropic Console API key (+ ccapi-token)
     cckimi -> run Claude Code on the Kimi (Moonshot) backend   (+ cckimi-token)
     ccglm  -> run Claude Code on the Z.AI GLM backend          (+ ccglm-token)
     ccort   -> run Claude Code on the OpenRouter gateway        (+ ccort-token, ccort-model)
@@ -23,7 +24,7 @@ param([switch]$Uninstall, [switch]$Yes)
 $ErrorActionPreference = 'Stop'
 $aliasDir = Join-Path $env:USERPROFILE 'apps\aliases'
 $names = @('cckimi','ccglm','ccort','ccart','cckimi-token','ccglm-token','ccort-token','ccort-model',
-           'ccart-token','ccart-model','ccskip','cxskip')
+           'ccart-token','ccart-model','ccskip','cxskip','ccapi','ccapi-token')
 # Where the Claude Code installers put the binary - both go on PATH so 'claude' always resolves.
 $claudeBinDirs = @((Join-Path $env:USERPROFILE '.local\bin'), (Join-Path $env:USERPROFILE '.claude\bin'))
 
@@ -83,6 +84,7 @@ function Install-ClaudeCode {
 # Order shown in the picker; Cmds is everything the entry installs.
 $catalogue = @(
     @{ Key='ccskip'; Label='ccskip / cxskip   your Anthropic login, skip-permissions'; Cmds=@('ccskip','cxskip') }
+    @{ Key='ccapi';  Label='ccapi             Anthropic Console API key (claude-opus-5-5)'; Cmds=@('ccapi','ccapi-token') }
     @{ Key='cckimi'; Label='cckimi            Kimi (Moonshot) backend';                Cmds=@('cckimi','cckimi-token') }
     @{ Key='ccglm';  Label='ccglm             Z.AI GLM backend';                       Cmds=@('ccglm','ccglm-token') }
     @{ Key='ccort';  Label='ccort             OpenRouter gateway (stealth/ox-alpha)';  Cmds=@('ccort','ccort-token','ccort-model') }
@@ -138,10 +140,10 @@ if ($Uninstall) {
         Remove-Item -LiteralPath (Join-Path $aliasDir "$n.cmd") -Force -ErrorAction SilentlyContinue
     }
     Remove-AliasDirFromUserPath $aliasDir
-    Write-Host "OK  cckimi / ccglm / ccort / ccart / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
-    Write-Host "note: the cached token/model files (.kimi_token, .zai_token, .openrouter_token,"
-    Write-Host "      .agentrouter_token and the matching *_model files) were left untouched, and"
-    Write-Host "      Claude Code itself is not uninstalled."
+    Write-Host "OK  ccapi / cckimi / ccglm / ccort / ccart / ccskip / cxskip removed from $aliasDir (and User PATH)." -ForegroundColor Green
+    Write-Host "note: the cached token/model files (.anthropic_token, .kimi_token, .zai_token,"
+    Write-Host "      .openrouter_token, .agentrouter_token and the matching *_model files) were"
+    Write-Host "      left untouched, and Claude Code itself is not uninstalled."
     return
 }
 
@@ -198,6 +200,46 @@ call claude --dangerously-skip-permissions --effort max --model claude-opus-5 %*
 $cmds['cxskip'] = @'
 @echo off
 call claude --dangerously-skip-permissions --effort max --model claude-opus-5 %*
+'@
+$cmds['ccapi'] = @'
+@echo off
+setlocal
+set "TOKENFILE=%USERPROFILE%\.anthropic_token"
+set "token="
+if exist "%TOKENFILE%" set /p token=<"%TOKENFILE%"
+if not "%token%"=="" goto :run
+set /p token=ccapi: no API key found. Enter your Anthropic Console API key:
+if "%token%"=="" (
+    echo ccapi: no key entered, aborting.
+    exit /b 1
+)
+>"%TOKENFILE%" echo %token%
+icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
+echo ccapi: key saved to %TOKENFILE% (current-user only).
+:run
+rem ANTHROPIC_API_KEY outranks the /login subscription credential, so ccapi bills the
+rem Console key per token while you stay logged in -- and ccskip still uses the
+rem subscription. ANTHROPIC_AUTH_TOKEN ranks ABOVE the key, so it is blanked here, and the
+rem base URL is pinned to first-party so a gateway in the environment cannot hijack it.
+rem Claude Code asks once, on the first interactive run, to approve the key; say yes.
+set "ANTHROPIC_API_KEY=%token%"
+set "ANTHROPIC_AUTH_TOKEN="
+set "ANTHROPIC_BASE_URL=https://api.anthropic.com"
+call claude --dangerously-skip-permissions --model claude-opus-5-5 %*
+'@
+$cmds['ccapi-token'] = @'
+@echo off
+setlocal
+set "TOKENFILE=%USERPROFILE%\.anthropic_token"
+set "key=%~1"
+if "%key%"=="" set /p key=ccapi-token - paste API key:
+if "%key%"=="" (
+    echo ccapi-token: no key given.
+    exit /b 1
+)
+>"%TOKENFILE%" echo %key%
+icacls "%TOKENFILE%" /inheritance:r /grant:r "%USERNAME%:(R,W)" >nul 2>&1
+echo ccapi-token: key written to %TOKENFILE% (current-user only).
 '@
 $cmds['cckimi'] = @'
 @echo off
@@ -523,9 +565,13 @@ if ($staleFound.Count -gt 0) { Write-Host ""; Write-Host ("removed (deprecated):
 Write-Host ""
 Write-Host "Ready in THIS PowerShell session now (the alias folder was added to the current PATH)." -ForegroundColor Green
 Write-Host "Open a new window only for cmd.exe / other shells to pick up the persisted PATH."
-Write-Host "First run of a backend launcher asks for its API key and caches it in %USERPROFILE%\.kimi_token"
-Write-Host "/ .zai_token / .openrouter_token / .agentrouter_token; update later with cckimi-token /"
-Write-Host "ccglm-token / ccort-token / ccart-token."
+Write-Host "First run of a backend launcher asks for its API key and caches it in %USERPROFILE%\.anthropic_token"
+Write-Host "/ .kimi_token / .zai_token / .openrouter_token / .agentrouter_token; update later with"
+Write-Host "ccapi-token / cckimi-token / ccglm-token / ccort-token / ccart-token."
+Write-Host ""
+Write-Host "ccapi runs on an Anthropic Console API key (platform.claude.com/settings/keys) and bills" -ForegroundColor Yellow
+Write-Host "that key per token - no subscription involved. Claude Code asks once, on the first"
+Write-Host "interactive run, to approve the key over your login; answer yes."
 Write-Host ""
 Write-Host "ccort defaults to the free stealth/ox-alpha model, ccart to claude-opus-5." -ForegroundColor Yellow
 Write-Host "Run ccort-model / ccart-model with no argument to pick another from a numbered list."
